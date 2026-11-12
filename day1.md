@@ -1,16 +1,28 @@
 # Day 1 — Raspberry Pi and Python
 
-> **Today the Pi becomes a gateway you can trust:** you set it up without a screen, learn to drive it from the command line, and finish with a Python program that keeps running on its own, through crashes and reboots.
+> **Today the Pi becomes a gateway you can trust:** you set it up without a screen, lock it down, write Python that keeps running through crashes and network loss, and finish by switching a real relay safely.
 
 ## Before you start
 
 - [ ] Raspberry Pi, power supply and microSD card on your desk
+- [ ] Single-channel relay module and 6 female-to-female jumper wires (for Topic 6)
 - [ ] Raspberry Pi Imager 2.0 or later installed on your laptop
 - [ ] VS Code installed, with the **Remote - SSH** extension
 - [ ] The lab Wi-Fi name and password (on the whiteboard)
 - [ ] Your Pi number from the trainer: `pi01` or `pi02`
 
-**Our running use case:** *Stesen Pam PS-01*, a small water pump station. It has a storage tank (level in %), a pump motor (temperature in °C) and, from Day 2, a door switch and a pump relay. Your Pi is the station's edge gateway.
+**Our running use case:** *Stesen Pam PS-01*, a small water pump station. It has a storage tank (level in %), a pump motor (temperature in °C), a door on the pump house and a pump switched by a relay. Your Pi is the station's edge gateway.
+
+**Today's topics**
+
+| # | Topic | Time |
+|---|---|---|
+| 1 | Single-board computers and IoT architecture | 30 min |
+| 2 | Setting up the Raspberry Pi | 45 min |
+| 3 | Python for IoT | 45 min |
+| 4 | Hardening the Pi | 45 min |
+| 5 | Python for gateways: classes, threads, SQLite, HTTP | 75 min |
+| 6 | GPIO: door switch, pump relay and interlock | 90 min |
 
 ---
 
@@ -215,16 +227,20 @@ In the `ss` output, find port **22**. That is SSH, waiting for connections.
 
 Raspberry Pi OS protects its own Python. A plain `pip install` fails with `error: externally-managed-environment`. Instead, each project gets its own **virtual environment (venv)**: a private folder of Python packages.
 
-1. Create and activate it:
+1. Install the GPIO libraries from Raspberry Pi OS (needed in Topic 6):
+   ```bash
+   sudo apt install -y python3-gpiozero python3-lgpio
+   ```
+2. Create and activate the venv:
    ```bash
    cd ~/iiot
-   python3 -m venv .venv
+   python3 -m venv --system-site-packages .venv
    source .venv/bin/activate
    ```
-   Your prompt now starts with `(.venv)`.
-2. Install the packages the course uses on Day 2, and record them:
+   Your prompt now starts with `(.venv)`. The `--system-site-packages` option lets the venv also see the GPIO libraries you just installed with `apt`, which are built specially for the Pi.
+3. Install the packages the course uses, and record them:
    ```bash
-   pip install pymodbus paho-mqtt
+   pip install requests pymodbus paho-mqtt
    pip freeze > requirements.txt
    ```
 3. In VS Code, press **F1** → **Python: Select Interpreter** → choose `./.venv/bin/python`.
@@ -466,20 +482,585 @@ A gateway program must start by itself after a power cut and restart itself afte
 
 ---
 
+## Topic 4 — Hardening the Pi
+
+**Goal:** close the doors you do not need. Your Pi will switch a relay this afternoon; anyone on the network who can log in to it can switch the pump.
+
+**Open:** a terminal on your **laptop** and a VS Code terminal on the Pi. Keep both open for the whole topic.
+
+> **Never lock yourself out:** keep your current session open while you change SSH or the firewall. Test the change from a **second, new** connection. If the new one fails, fix it from the old one.
+
+### 4.1 — Log in with a key instead of a password
+
+A **key pair** is two matching files: a private key that never leaves your laptop, and a public key you copy to the Pi. A stolen or guessed password is no longer enough.
+
+1. On your **laptop**, create a key pair (press **Enter** to accept the default file, and set a passphrase):
+   ```bash
+   ssh-keygen -t ed25519
+   ```
+2. Copy the public key to the Pi.
+
+   Windows (PowerShell):
+   ```powershell
+   type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh pelatih@pi01.local "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+   ```
+   macOS / Linux:
+   ```bash
+   ssh-copy-id pelatih@pi01.local
+   ```
+3. Open a **new** laptop terminal and connect: `ssh pelatih@pi01.local`. It asks for your key passphrase, not the Pi password.
+
+### 4.2 — Turn off password login
+
+1. On the Pi, create a settings file for the SSH server:
+   ```bash
+   sudo nano /etc/ssh/sshd_config.d/10-hardening.conf
+   ```
+   ```
+   PasswordAuthentication no
+   KbdInteractiveAuthentication no
+   PermitRootLogin no
+   ```
+2. Check the configuration for mistakes, then confirm the setting that will actually apply:
+   ```bash
+   sudo sshd -t
+   sudo sshd -T | grep -i passwordauthentication
+   ```
+   The second line must say `passwordauthentication no`.
+3. Restart SSH: `sudo systemctl restart ssh`. Your open sessions stay connected.
+4. From a **new** laptop terminal, log in with your key again. It must still work.
+
+> **Why `10-` in the file name?** SSH reads the files in `sshd_config.d/` in alphabetical order, and the first value it finds for a setting wins. A low number makes sure yours is read before any file the system adds.
+
+### 4.3 — A firewall: deny by default
+
+**ufw** (Uncomplicated Firewall) decides which incoming connections are allowed. The rule for a gateway: deny everything, then allow only what you can name a reason for.
+
+1. Install it and set the defaults:
+   ```bash
+   sudo apt install -y ufw
+   sudo ufw default deny incoming
+   sudo ufw default allow outgoing
+   ```
+2. Allow what you need, with a comment saying why:
+   ```bash
+   sudo ufw limit 22/tcp comment 'SSH, rate-limited'
+   sudo ufw allow 5353/udp comment 'mDNS, so pi01.local still resolves'
+   ```
+3. Switch it on and check it:
+   ```bash
+   sudo ufw enable
+   sudo ufw status verbose
+   ```
+
+| Rule | Why |
+|---|---|
+| `default deny incoming` | Anything not listed is dropped |
+| `limit 22/tcp` | SSH allowed, but an address that tries 6 connections in 30 seconds is blocked for a while (slows password guessing) |
+| `allow 5353/udp` | Your laptop finds the Pi by name using mDNS (multicast DNS). Without it, `pi01.local` stops working |
+
+### 4.4 — Turn off what you do not use
+
+1. List running services: `systemctl list-units --type=service --state=running`
+2. A gateway does not need Bluetooth. Turn it off (skip this if the service does not exist on your Pi):
+   ```bash
+   sudo systemctl disable --now bluetooth
+   ```
+3. Run `ss -tulpn` again and compare with Topic 2.
+
+> **Listening is not the same as reachable.** `ss` shows what is *listening*. `ufw status` shows what is *allowed in*. A port is open to the network only when both say yes.
+
+**Try it**
+1. **Break it on purpose.** From your laptop, try to log in with a password only:
+   ```bash
+   ssh -o PubkeyAuthentication=no pelatih@pi01.local
+   ```
+   You get `Permission denied (publickey)`. That is what an attacker sees.
+2. Ask your neighbour to try the same command against your Pi. Same result.
+
+**Checkpoint ✅** You log in with your key, password login is refused, and `sudo ufw status` shows only SSH and mDNS allowed.
+
+---
+
+## Topic 5 — Python for gateways: classes, threads, SQLite and HTTP
+
+**Goal:** turn the simulator into a real gateway structure: read, store and forward in separate threads, so a slow or dead network never stops the readings. On Day 2 you swap the simulator for real equipment and keep everything else.
+
+**Open:** VS Code on your Pi, folder `~/iiot`. Work in pairs: `pi01` forwards to `pi02`, and `pi02` forwards to `pi01`.
+
+### 5.1 — The four new ideas
+
+```
+              every 2 s                     store first,            then forward
+[ sensor thread ] ──► [ queue ] ──► [ store thread ] ──► SQLite ──► HTTP POST ──► neighbour's Pi
+```
+
+| Idea | What it gives the gateway |
+|---|---|
+| **Class** | `PumpStationSimulator` keeps its own state (the last tank level) inside one object, with one `read()` method. On Day 2, a Modbus class with the same `read()` replaces it and nothing else changes. |
+| **Dataclass** | `Reading` names every field of a reading once. A typo like `reading.tank_levl` is an error straight away, not a missing value discovered next week. |
+| **Thread + queue** | The sensor thread only reads and puts readings on the queue. The store thread takes them off. If forwarding hangs, readings wait in the queue; none are skipped. |
+| **SQLite** | A real database in a single file. Unlike a text file, a reading is either fully saved or not saved at all, and you can query it with SQL (Structured Query Language). |
+
+### 5.2 — The receiver (your neighbour's end)
+
+1. Create `~/iiot/receiver.py` (or copy `code/day1/receiver.py`):
+
+```python
+#!/usr/bin/env python3
+"""A tiny HTTP receiver: prints every reading a neighbour's gateway POSTs to it."""
+import json
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+PORT = 8080
+
+
+class Handler(BaseHTTPRequestHandler):
+    def do_POST(self) -> None:
+        length = int(self.headers.get("Content-Length", 0))
+        try:
+            reading = json.loads(self.rfile.read(length))
+        except json.JSONDecodeError:
+            self.send_response(400)  # Bad Request
+            self.end_headers()
+            return
+
+        print(f"From {reading.get('gateway')} ({self.client_address[0]}): "
+              f"level {reading.get('tank_level_pct')}%  "
+              f"temp {reading.get('pump_temp_c')}  {reading.get('status')}")
+        self.send_response(204)  # No Content: received, nothing to send back
+        self.end_headers()
+
+    def log_message(self, *args) -> None:
+        pass  # keep the screen clean: our print above is enough
+
+
+if __name__ == "__main__":
+    print(f"Listening on port {PORT}, Ctrl+C to stop")
+    HTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+```
+
+2. Open the port in your firewall, then start the receiver and leave it running:
+   ```bash
+   sudo ufw allow 8080/tcp comment 'Day 1 receiver lab'
+   python receiver.py
+   ```
+
+> **Later, in production:** allow the port only from the one address that should use it: `sudo ufw allow from <sender-ip> to any port 8080 proto tcp`.
+
+### 5.3 — The gateway
+
+1. Open a **second** VS Code terminal (activate the venv) and create `~/iiot/gateway.py` (or copy `code/day1/gateway.py`):
+
+```python
+#!/usr/bin/env python3
+"""PS-01 edge gateway: read, store and forward, each in its own thread.
+
+- sensor thread  : takes a reading every INTERVAL_S seconds and puts it on a queue
+- store thread   : saves every reading to SQLite, then forwards it over HTTP
+A slow or dead network never delays the sensor readings.
+"""
+import logging
+import queue
+import random
+import signal
+import socket
+import sqlite3
+import threading
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+
+import requests
+
+STATION = "PS-01"
+INTERVAL_S = 2
+DB_FILE = Path.home() / "iiot" / "data" / "ps01.db"
+FORWARD_URL = "http://pi02.local:8080/readings"  # your neighbour's Pi
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(threadName)s %(levelname)s %(message)s")
+log = logging.getLogger("gateway")
+
+
+@dataclass
+class Reading:
+    ts: str
+    station: str
+    gateway: str
+    tank_level_pct: float
+    pump_temp_c: float | None
+    status: str
+
+
+class PumpStationSimulator:
+    """Simulated sensors. On Day 2 a Modbus class with the same read() replaces it."""
+
+    def __init__(self, station: str, start_level: float = 60.0):
+        self.station = station
+        self.level = start_level
+        self.gateway = socket.gethostname()
+
+    def _read_pump_temp(self) -> float:
+        if random.random() < 0.02:
+            raise IOError("pump temperature sensor not responding")
+        return round(random.gauss(45.0, 1.5), 1)
+
+    def read(self) -> Reading:
+        self.level = max(0.0, min(100.0, self.level + random.uniform(-1.5, 1.5)))
+        try:
+            temp, status = self._read_pump_temp(), "OK"
+        except IOError as err:
+            temp, status = None, "SENSOR_FAULT"
+            log.warning("Read failed: %s", err)
+        return Reading(
+            ts=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            station=self.station,
+            gateway=self.gateway,
+            tank_level_pct=round(self.level, 1),
+            pump_temp_c=temp,
+            status=status,
+        )
+
+
+def sensor_loop(sim: PumpStationSimulator, q: queue.Queue, stop: threading.Event) -> None:
+    while not stop.is_set():
+        q.put(sim.read())
+        stop.wait(INTERVAL_S)
+
+
+def store_and_forward_loop(q: queue.Queue, stop: threading.Event) -> None:
+    db = sqlite3.connect(DB_FILE)  # a connection belongs to the thread that made it
+    db.execute(
+        "CREATE TABLE IF NOT EXISTS readings ("
+        "ts TEXT, station TEXT, gateway TEXT, tank_level_pct REAL, pump_temp_c REAL, status TEXT)"
+    )
+    session = requests.Session()
+
+    while not stop.is_set():
+        try:
+            reading = q.get(timeout=1)
+        except queue.Empty:
+            continue
+
+        db.execute(
+            "INSERT INTO readings VALUES (:ts, :station, :gateway, :tank_level_pct, :pump_temp_c, :status)",
+            asdict(reading),
+        )
+        db.commit()
+
+        try:
+            response = session.post(FORWARD_URL, json=asdict(reading), timeout=2)
+            response.raise_for_status()
+            log.info("Stored and forwarded %s (queue: %d)", reading.ts, q.qsize())
+        except requests.RequestException as err:
+            log.warning("Stored locally, forward failed (queue: %d): %s", q.qsize(), type(err).__name__)
+
+    db.close()
+
+
+def main() -> None:
+    DB_FILE.parent.mkdir(parents=True, exist_ok=True)
+    stop = threading.Event()
+    signal.signal(signal.SIGTERM, lambda *_: stop.set())
+
+    q: queue.Queue = queue.Queue()
+    threads = [
+        threading.Thread(target=sensor_loop, args=(PumpStationSimulator(STATION), q, stop), name="sensor"),
+        threading.Thread(target=store_and_forward_loop, args=(q, stop), name="store"),
+    ]
+    for t in threads:
+        t.start()
+    log.info("Gateway started, forwarding to %s", FORWARD_URL)
+
+    try:
+        while not stop.is_set():
+            stop.wait(1)
+    except KeyboardInterrupt:
+        stop.set()
+
+    for t in threads:
+        t.join()
+    log.info("Gateway stopped cleanly")
+
+
+if __name__ == "__main__":
+    main()
+```
+
+2. Set `FORWARD_URL` to your **neighbour's** Pi (`pi01` uses `pi02.local`, `pi02` uses `pi01.local`).
+3. Run it: `python gateway.py`. Your log shows `Stored and forwarded`, and your neighbour's receiver prints your readings.
+
+| Piece | What it does |
+|---|---|
+| `threadName` in the log format | Every log line says which thread wrote it: `sensor`, `store` or `MainThread` |
+| `stop = threading.Event()` | One shared "please stop" flag. `stop.wait(2)` sleeps, but wakes up at once when the flag is set |
+| `signal.SIGTERM` handler | `systemctl stop` sends SIGTERM; the gateway finishes the current reading and closes the database cleanly |
+| `sqlite3.connect()` inside the thread | SQLite connections must stay in the thread that opened them |
+| `:ts, :station, …` in the SQL | Values are passed separately from the SQL text, never glued into it. This blocks SQL injection |
+| `timeout=2` on the POST | Without a timeout, one dead connection can hang the store thread forever |
+| Store first, then forward | A reading is safe on disk before the network is even tried |
+
+### 5.4 — Query the database
+
+```bash
+sudo apt install -y sqlite3
+sqlite3 data/ps01.db "SELECT status, COUNT(*) FROM readings GROUP BY status;"
+sqlite3 -header -column data/ps01.db "SELECT ts, tank_level_pct, pump_temp_c FROM readings ORDER BY ts DESC LIMIT 5;"
+```
+
+**Try it**
+1. **Network down.** Ask your neighbour to stop their receiver (**Ctrl+C**). Your gateway logs `forward failed: ConnectionError`, but readings keep arriving every 2 seconds and keep landing in SQLite. Count them with the first query above.
+2. **Network silently dropping.** Ask your neighbour to start the receiver again, then close the port: `sudo ufw delete allow 8080/tcp`. Now every POST waits the full 2-second timeout (`ReadTimeout` or `ConnectTimeout`). Watch the `queue:` number: the sensor thread keeps its rhythm while the store thread falls behind. Without threads, your readings would slow down instead.
+3. **Put everything back:** your neighbour runs `sudo ufw allow 8080/tcp comment 'Day 1 receiver lab'`.
+
+> **Recap:** readings that failed to forward are stored, but not resent. On Day 3 you add store-and-forward: the gateway resends what it missed once the link is back.
+
+### 5.5 — Make the gateway the service
+
+The gateway replaces the Topic 3 simulator.
+
+1. Stop and disable the old service:
+   ```bash
+   sudo systemctl disable --now sim-sensor
+   ```
+2. Create `/etc/systemd/system/gateway.service` with `sudo nano` (or copy `code/day1/gateway.service`). It is the same as `sim-sensor.service`, with a new description and `gateway.py` in `ExecStart`:
+   ```ini
+   [Unit]
+   Description=PS-01 edge gateway (read, store, forward)
+   After=network.target
+
+   [Service]
+   User=pelatih
+   WorkingDirectory=/home/pelatih/iiot
+   ExecStart=/home/pelatih/iiot/.venv/bin/python /home/pelatih/iiot/gateway.py
+   Restart=always
+   RestartSec=3
+   Environment=PYTHONUNBUFFERED=1
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+3. Enable it, and stop it once to see the clean shutdown in the journal:
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now gateway
+   sudo systemctl stop gateway
+   journalctl -u gateway -n 5
+   sudo systemctl start gateway
+   ```
+   The journal ends with `Gateway stopped cleanly`.
+
+**Checkpoint ✅** `gateway` runs as a service, your neighbour's receiver shows your readings, and when forwarding fails the readings still land in `ps01.db`.
+
+---
+
+## Topic 6 — GPIO: door switch, pump relay and interlock
+
+**Goal:** read a digital input and switch a relay from Python, then combine them into an interlock that keeps the pump safe whatever happens to your program.
+
+**Open:** VS Code on your Pi, and your relay module and jumper wires.
+
+### 6.1 — The GPIO header, safely
+
+1. Show the header layout on your Pi: `pinout`
+2. These are the pins you use today:
+
+| Signal | GPIO | Physical pin | Connect to |
+|---|---|---|---|
+| Door switch | GPIO17 | 11 | GND, pin 9 |
+| START | GPIO22 | 15 | GND, pin 14 (touch briefly) |
+| STOP | GPIO23 | 16 | GND, pin 20 (touch briefly) |
+| Relay IN | GPIO27 | 13 | Relay module **IN** |
+| Relay VCC | 5 V | 2 | Relay module **VCC** |
+| Relay GND | GND | 6 | Relay module **GND** |
+
+> **Three rules for the header:**
+> 1. **Inputs go to GND only. Never connect a GPIO pin to 5 V** (pins 2 and 4). GPIO pins work at 3.3 V and are damaged by 5 V.
+> 2. **Wire with the power off.** Shut down with `sudo poweroff`, wait for the green light to stop, then unplug.
+> 3. **No mains voltage in this lab.** The relay switches nothing today; its click and its LED (light-emitting diode) are your output.
+
+### 6.2 — Digital input: the door switch
+
+A GPIO input reads **high** (3.3 V) or **low** (0 V). With the Pi's internal **pull-up** resistor switched on, an unconnected pin reads high. Connecting it to GND pulls it low.
+
+1. Shut down, connect a jumper from **pin 11** to **pin 9**, and power up. Jumper in place = door closed.
+2. Create `~/iiot/door_switch.py` (or copy `code/day1/door_switch.py`):
+
+```python
+#!/usr/bin/env python3
+"""Read the PS-01 door switch: jumper GPIO17 (pin 11) to GND (pin 9) = door closed."""
+from signal import pause
+
+from gpiozero import Button
+
+door = Button(17, pull_up=True, bounce_time=0.05)
+door.when_pressed = lambda: print("Door CLOSED")
+door.when_released = lambda: print("Door OPEN")
+
+print("Door is", "CLOSED" if door.is_pressed else "OPEN", "- Ctrl+C to stop")
+pause()
+```
+
+3. Run it, then pull one end of the jumper off pin 9 and put it back a few times.
+
+| Piece | What it does |
+|---|---|
+| `Button(17, pull_up=True)` | GPIO17 as an input with the internal pull-up on. Connected to GND = "pressed" |
+| `bounce_time=0.05` | Ignore extra changes for 50 ms after each change |
+| `when_pressed` / `when_released` | Functions that run on a change, so you do not check the pin in a loop |
+| `pause()` | Keep the program alive, waiting for events |
+
+> **The door switch is fail-safe already.** Jumper in place means closed. A broken wire or a pulled connector reads exactly like an open door, so the plant stops instead of carrying on blind. Real safety circuits are wired the same way.
+
+### 6.3 — Digital output: the pump relay
+
+A relay is a switch worked by an electromagnet. The Pi's 3.3 V pin cannot drive the electromagnet directly; the relay **module** has the extra electronics to do it.
+
+1. Shut down. Connect the relay module: **VCC → pin 2**, **GND → pin 6**, **IN → pin 13**. Power up.
+2. Create `~/iiot/relay_test.py` (or copy `code/day1/relay_test.py`):
+
+```python
+#!/usr/bin/env python3
+"""Click the pump relay on GPIO27 (pin 13) three times."""
+from time import sleep
+
+from gpiozero import OutputDevice
+
+RELAY_ACTIVE_HIGH = True  # set to False if the relay is ON while this says OFF
+
+pump = OutputDevice(27, active_high=RELAY_ACTIVE_HIGH, initial_value=False)
+print("Relay should be OFF now. Starting in 3 seconds...")
+sleep(3)
+
+for _ in range(3):
+    pump.on()
+    print("ON")
+    sleep(1)
+    pump.off()
+    print("OFF")
+    sleep(1)
+```
+
+3. Run it, and watch the relay's LED during the 3-second wait.
+   - LED **off** during the wait, then three clicks: your module is **active-high**. Keep `True`.
+   - LED **on** during the wait: your module is **active-low** (IN pulled low switches it on). Set `RELAY_ACTIVE_HIGH = False` and run again.
+
+> **Relay never switches off, even with the setting right?** Some 5 V active-low modules do not see the Pi's 3.3 V as "high". This is a hardware mismatch, not your code. Tell the trainer.
+
+> **Why `initial_value=False`?** The moment your program starts, the pump must be off, whatever state the pin was left in. Starting a machine should always be a deliberate act.
+
+### 6.4 — The interlock
+
+Now put it together. The pump may only run when someone presses START **and** the door is closed. STOP or an opening door switches it off at once. STOP always wins.
+
+1. Shut down and add two jumpers for the buttons: one on **pin 15** (START) and one on **pin 16** (STOP), with their other ends free. Touch a free end briefly onto a GND pin (14 for START, 20 for STOP) to "press" it. Power up.
+2. Create `~/iiot/pump_control.py` (or copy `code/day1/pump_control.py`). Use the `RELAY_ACTIVE_HIGH` value you found in 6.3:
+
+```python
+#!/usr/bin/env python3
+"""PS-01 pump control: START/STOP with a door interlock, fail-safe by design.
+
+Wiring (jumpers go to GND only):
+  door switch  GPIO17 (pin 11)  -> GND (pin 9)   jumper in place = door closed
+  START        GPIO22 (pin 15)  -> GND (pin 14)  touch briefly
+  STOP         GPIO23 (pin 16)  -> GND (pin 20)  touch briefly
+  relay IN     GPIO27 (pin 13); relay VCC -> 5V (pin 2); relay GND -> GND (pin 6)
+"""
+import logging
+import signal
+import sys
+from signal import pause
+
+from gpiozero import Button, OutputDevice
+
+RELAY_ACTIVE_HIGH = True  # set to False if your relay switches ON when the program starts
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+log = logging.getLogger("pump_control")
+
+door = Button(17, pull_up=True, bounce_time=0.05)
+start_button = Button(22, pull_up=True, bounce_time=0.05)
+stop_button = Button(23, pull_up=True, bounce_time=0.05)
+pump = OutputDevice(27, active_high=RELAY_ACTIVE_HIGH, initial_value=False)
+
+
+def start() -> None:
+    if not door.is_pressed:
+        log.warning("START refused: door is open")
+        return
+    if stop_button.is_pressed:
+        log.warning("START refused: STOP is held")
+        return
+    if not pump.is_active:
+        pump.on()
+        log.info("Pump ON")
+
+
+def stop(reason: str) -> None:
+    if pump.is_active:
+        pump.off()
+        log.info("Pump OFF (%s)", reason)
+
+
+def door_opened() -> None:
+    log.warning("Door OPEN")
+    stop("door opened")
+
+
+start_button.when_pressed = start
+stop_button.when_pressed = lambda: stop("STOP pressed")
+door.when_released = door_opened
+door.when_pressed = lambda: log.info("Door closed")
+
+signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+
+log.info("Pump control ready. Door is %s, pump is OFF", "closed" if door.is_pressed else "OPEN")
+try:
+    pause()
+finally:
+    pump.off()
+    log.info("Pump control stopped, pump OFF")
+```
+
+3. Run `python pump_control.py` and work through this test sheet. Tick each line only when the relay does what the log says.
+
+| # | Do this | Expected |
+|---|---|---|
+| 1 | Door closed, touch START | Pump ON, relay clicks |
+| 2 | Touch STOP | Pump OFF |
+| 3 | Open the door (pull the pin 9 end), touch START | `START refused: door is open`, relay stays off |
+| 4 | Close the door, touch START, then open the door | Pump OFF (door opened) |
+| 5 | Close the door. Hold STOP on GND and touch START with the other jumper | `START refused: STOP is held` |
+| 6 | Close the door. Pump ON, then press **Ctrl+C** | `Pump control stopped, pump OFF` |
+
+> **Closing the door does not restart the pump.** After a stop, a person must press START again. A machine that restarts by itself when a guard closes can injure the person who just closed it.
+
+**Try it**
+1. **Kill it the hard way.** Start the pump, then from a second terminal: `pkill -9 -f pump_control.py`. `-9` gives the program no chance to run its `finally` block. **Watch the relay** and write down what it did. Whatever happened was decided by the relay module's hardware, not by your code.
+2. **Power cut.** Start the pump, then pull the Pi's power. The relay must drop out, because the module loses its supply.
+3. **Put everything back:** power up, run `pump_control.py` again, and confirm the pump starts OFF.
+
+> **Later, in production:** never rely on software alone for safety. Real plants put a hardware interlock (the door switch wired in series with the contactor coil) and a watchdog in front of the program, so a crash or a frozen Pi always ends with the pump off.
+
+**Checkpoint ✅** All six lines of the test sheet pass, and you can say what your relay did when the program was killed with `-9`.
+
+---
+
 ## End of Day 1 — what you should have
 
-- A Raspberry Pi named `pi01` / `pi02`, updated, reachable over SSH and from VS Code
-- `~/iiot/.venv` with `pymodbus` and `paho-mqtt`, and `requirements.txt`
-- `~/iiot/sim_sensor.py` running as the `sim-sensor` service, surviving crashes and reboots
-- `~/iiot/data/ps01.jsonl` filling with readings
-- `~/iiot/summarise.py` producing a shift report that copes with damaged lines
+- A Raspberry Pi named `pi01` / `pi02`, updated, reachable from VS Code with an SSH key
+- Password login off, and a firewall allowing only SSH, mDNS and port 8080
+- `~/iiot/.venv` with `requests`, `pymodbus` and `paho-mqtt`, and `requirements.txt`
+- `~/iiot/gateway.py` running as the `gateway` service: reading, storing to `data/ps01.db` and forwarding to your neighbour
+- `~/iiot/pump_control.py` passing the interlock test sheet, with the relay wired to pin 13
 
 **Security recap**
-- Your Pi password is the only thing between the lab network and a computer that will soon switch a relay. Do not reuse a password from elsewhere.
+- Your private key never leaves your laptop. Anyone with it, and its passphrase, can switch your pump.
+- Every open port is a promise to keep it safe. You opened 8080 for a lab; on Day 2 you will close what you no longer need.
 - Your programs run as `pelatih`, not root. Only use `sudo` for system tasks.
 
 **Extra, if you finish early**
-1. Add a high-level alarm to the simulator: when `tank_level_pct` goes above 90, log a `WARNING` and add `"alarm": "HIGH_LEVEL"` to the reading. Change the starting level to 88 to test it.
-2. Switch to SSH key login. On your laptop: `ssh-keygen -t ed25519`, then copy the contents of the `.pub` file into `~/.ssh/authorized_keys` on the Pi. Log in again: no password prompt.
+1. **A normally-closed STOP.** Real STOP buttons are wired so a broken wire stops the machine. Leave the STOP jumper connected from pin 16 to pin 20 all the time, and treat *removing* it as pressing STOP: change `stop_button.when_pressed` to `when_released`, and the START check to refuse when the STOP jumper is *not* in place. Then cut the "wire" and see the pump stop.
+2. Run `pump_control.py` as a service called `pump-control`, then repeat the `-9` kill test. What does systemd do, and is a pump that comes back OFF after a restart safe?
 
-**Tomorrow (Day 2):** the Pi meets real equipment. You wire a door switch and a pump relay to the GPIO pins, read the plant's field device over Modbus, and publish everything securely over MQTT.
+**Tomorrow (Day 2):** the gateway meets the plant. You read a real field device over Modbus, publish readings and pump commands over secure MQTT, and build an operator dashboard in Node-RED, where a remote command must still obey your local interlock.
