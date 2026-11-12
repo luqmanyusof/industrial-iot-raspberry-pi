@@ -1,0 +1,14 @@
+[Unit]
+Description=PS-01 edge gateway (read, store, forward)
+After=network.target
+
+[Service]
+User=pelatih
+WorkingDirectory=/home/pelatih/iiot
+ExecStart=/home/pelatih/iiot/.venv/bin/python /home/pelatih/iiot/gateway.py
+Restart=always
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
