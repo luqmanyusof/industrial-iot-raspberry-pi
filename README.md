@@ -58,7 +58,7 @@ industrial-iot-raspberry-pi/
 ├── day2.md
 ├── day3.md
 ├── sentinel.md                  # Day 3 afternoon project brief
-├── plant/                       # ESP32 firmware for the shared PS-01 plant (flash once, before Day 1)
+├── plant/                       # ESP32 firmware: PS-01 plant and SENTINEL outposts (flash once, before Day 1)
 ├── images/
 │   ├── day*-fig-*.svg / .png    # figures used in the day files
 │   └── src/                     # Python that draws the isometric figures:
@@ -90,7 +90,7 @@ industrial-iot-raspberry-pi/
 │   │   ├── alerts.py            # alert rules and mailer (Topic 15)
 │   │   └── gateway.py           # Day 3 edge node (Topics 14-15)
 │   └── sentinel/
-│       ├── sentinel_sim.py      # three simulated outposts, run on the trainer's Pi
+│       ├── sentinel_sim.py      # practice copy of the outposts (the real ones run on the ESP32)
 │       ├── outpost_read.py      # read the outposts by unit ID
-│       └── README.md            # how to run the outposts and create events
+│       └── README.md            # outpost registers and how to create events
 ```

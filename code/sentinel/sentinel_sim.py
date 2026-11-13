@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-"""Op SENTINEL: three simulated forward-operating-base outposts behind one Modbus TCP server.
+"""Op SENTINEL practice outposts: the same registers as the ESP32 plant, on your own Pi.
 
-Runs on the trainer's Pi (pi00). Participants poll 192.168.4.10, port 5020:
-  unit 1 = ALPHA, unit 2 = BRAVO, unit 3 = CHARLIE
+The real outposts are served by the ESP32 plant (192.168.4.1, port 502), next to the PS-01 registers.
+Run this copy when you want to practise alone, then point your programs at 127.0.0.1, port 5020.
 
-Per outpost (same map for every unit):
-  IR0 generator fuel     % x 10      IR2 shelter temperature  °C x 10
-  IR1 water tank         % x 10      IR3 uptime               seconds, wraps at 65535
-  DI0 generator running  1 = running
-  DI1 perimeter gate     1 = open
+  Outpost   Input registers (x 10)                              Discrete inputs
+  ALPHA     IR10 fuel %, IR11 water %, IR12 shelter C,          DI10 generator running, DI11 gate open,
+  BRAVO     IR13 data age s   (BRAVO from 20, CHARLIE from 30)  DI12 link OK
+  CHARLIE
 
-Type commands while it runs (help for the list), for example:  leak charlie
+Type the same events as on the ESP32's serial monitor, for example:  leak charlie
 """
 import argparse
 import asyncio
@@ -38,8 +37,9 @@ class Outpost:
     gate_open: bool = False
     gate_until: float = 0.0       # when a patrol's gate opening ends by itself
     leak: bool = False
-    silent: bool = False          # stops answering Modbus, like a lost radio link
-    started: float = 0.0
+    silent: bool = False          # link lost: values freeze, link bit clears
+    base: int = 0
+    last_fresh: float = 0.0
 
     def step(self, t: float, dt: float) -> None:
         burn = 0.01 if self.generator else 0.0                  # % per second while the generator runs
@@ -57,16 +57,21 @@ class Outpost:
         if self.gate_until and t >= self.gate_until:
             self.gate_open, self.gate_until = False, 0.0
 
-    def inputs(self, now: float) -> list[int]:
-        return [round(self.fuel * 10), round(self.water * 10), round(self.temp * 10),
-                int(now - self.started) & 0xFFFF]
+    def publish(self, now: float) -> None:
+        """Copy this outpost's values into the Modbus tables, unless its link is lost."""
+        if not self.silent:
+            self.last_fresh = now
+            INPUTS.update({self.base: round(self.fuel * 10), self.base + 1: round(self.water * 10),
+                           self.base + 2: round(self.temp * 10)})
+            DISCRETES.update({self.base: self.generator, self.base + 1: self.gate_open})
+        INPUTS[self.base + 3] = min(int(now - self.last_fresh), 65535)
+        DISCRETES[self.base + 2] = not self.silent
 
-    def discretes(self) -> list[bool]:
-        return [self.generator, self.gate_open]
 
-
-OUTPOSTS = {1: Outpost("ALPHA", fuel=82, water=74), 2: Outpost("BRAVO", fuel=57, water=41),
-            3: Outpost("CHARLIE", fuel=34, water=63)}
+INPUTS: dict[int, int] = {}       # address -> value, only the addresses that exist
+DISCRETES: dict[int, bool] = {}
+OUTPOSTS = {10: Outpost("ALPHA", fuel=82, water=74, base=10), 20: Outpost("BRAVO", fuel=57, water=41, base=20),
+            30: Outpost("CHARLIE", fuel=34, water=63, base=30)}
 BY_NAME = {o.name.lower(): o for o in OUTPOSTS.values()}
 
 
@@ -78,19 +83,16 @@ def pack_bits(bits: list[bool]) -> bytes:
     return bytes(out)
 
 
-def handle(unit: int, pdu: bytes) -> bytes | None:
-    """Answer one request for one outpost. None = stay silent (no reply at all)."""
-    outpost = OUTPOSTS.get(unit)
-    if outpost is None or outpost.silent:
-        return None
+def handle(pdu: bytes) -> bytes:
+    """Answer one read request from the outpost tables."""
     fc = pdu[0]
     if fc not in (2, 4):                                 # this scenario is read-only
         return bytes([fc | 0x80, ILLEGAL_FUNCTION])
     addr, count = struct.unpack(">HH", pdu[1:5])
-    table = outpost.inputs(time.monotonic()) if fc == 4 else outpost.discretes()
-    if count < 1 or addr + count > len(table):
+    table = INPUTS if fc == 4 else DISCRETES
+    if count < 1 or any(a not in table for a in range(addr, addr + count)):
         return bytes([fc | 0x80, ILLEGAL_ADDRESS])
-    values = table[addr:addr + count]
+    values = [table[a] for a in range(addr, addr + count)]
     data = struct.pack(f">{count}H", *values) if fc == 4 else pack_bits(values)
     return bytes([fc, len(data)]) + data
 
@@ -101,10 +103,9 @@ async def serve_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrite
     try:
         while True:
             tid, pid, length, unit = struct.unpack(">HHHB", await reader.readexactly(7))
-            reply = handle(unit, await reader.readexactly(length - 1))
-            if reply is not None:
-                writer.write(struct.pack(">HHHB", tid, pid, len(reply) + 1, unit) + reply)
-                await writer.drain()
+            reply = handle(await reader.readexactly(length - 1))
+            writer.write(struct.pack(">HHHB", tid, pid, len(reply) + 1, unit) + reply)
+            await writer.drain()
     except (asyncio.IncompleteReadError, ConnectionResetError):
         pass
     finally:
@@ -113,9 +114,9 @@ async def serve_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrite
 
 
 def show() -> None:
-    for unit, o in OUTPOSTS.items():
+    for o in OUTPOSTS.values():
         flags = [f for f, on in (("LEAK", o.leak), ("SILENT", o.silent)) if on]
-        print(f"  unit {unit} {o.name:<8} fuel {o.fuel:5.1f} %  water {o.water:5.1f} %  temp {o.temp:4.1f} C  "
+        print(f"  {o.name:<8} fuel {o.fuel:5.1f} %  water {o.water:5.1f} %  temp {o.temp:4.1f} C  "
               f"generator {'ON ' if o.generator else 'OFF'}  gate {'OPEN' if o.gate_open else 'shut'}  "
               f"{' '.join(flags)}", flush=True)
 
@@ -125,7 +126,7 @@ HELP = """Commands (outpost = alpha, bravo or charlie):
   leak <outpost>          fuel starts leaking fast       refuel <outpost>    fuel back to 95 %, leak fixed
   genfail <outpost>       generator stops (shelter heats) genstart <outpost>  generator restarts
   gate <outpost>          open or shut the perimeter gate resupply <outpost>  water back to 95 %
-  silence <outpost>       outpost stops answering         restore <outpost>   outpost answers again
+  silence <outpost>       link lost: values freeze        restore <outpost>   link back
   quit"""
 
 
@@ -163,12 +164,13 @@ def command(line: str) -> bool:
 async def run_outposts() -> None:
     start = last = time.monotonic()
     for o in OUTPOSTS.values():
-        o.started = start
+        o.publish(start)
     while True:
         await asyncio.sleep(1)
         now = time.monotonic()
         for o in OUTPOSTS.values():
             o.step(now - start, now - last)
+            o.publish(now)
         last = now
 
 
@@ -188,7 +190,7 @@ async def main() -> None:
     parser.add_argument("--port", type=int, default=5020)
     args = parser.parse_args()
     server = await asyncio.start_server(serve_client, "0.0.0.0", args.port)
-    log.info("Op SENTINEL outposts on port %d: unit 1 ALPHA, 2 BRAVO, 3 CHARLIE", args.port)
+    log.info("Op SENTINEL practice outposts on port %d: ALPHA from 10, BRAVO from 20, CHARLIE from 30", args.port)
     async with server:
         await asyncio.gather(server.serve_forever(), run_outposts(), console())
 

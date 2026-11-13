@@ -4,8 +4,8 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from iso import (P, Scene, caption, door_switch, gap_point, laptop, origin, plate, raspberry_pi,  # noqa: E402
-                 server, shade, tank)
+from iso import (P, Scene, caption, door_switch, esp32, gap_point, laptop, origin, plate,  # noqa: E402
+                 raspberry_pi, server, shade, tank)
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 GW, IT, GREY = '#fff1c9', '#dfe9fb', '#eef1f5'
@@ -39,42 +39,44 @@ def fig_15_1():
     save(sc, 'day3-fig-15-1-mail-path.svg')
 
 
-# ---------- Op SENTINEL: three outposts, one trainer Pi, every station polls ----------
+# ---------- Op SENTINEL: three outposts served by the ESP32 plant, every station polls ----------
 def fig_sentinel():
     sc = Scene()
     OT, W, R = '#ffe8d6', 120, 150
-    outposts = ['ALPHA · unit 1', 'BRAVO · unit 2', 'CHARLIE · unit 3']
-    px, py = 290 + R, -290 + R                         # pi00 plate, level with the middle outpost
+    outposts = ['ALPHA · registers 10+', 'BRAVO · registers 20+', 'CHARLIE · registers 30+']
+    px, py = 290 + R, -290 + R                         # ESP32 plate, level with the middle outpost
     for r, name in enumerate(outposts):
         x, y = r * R, r * R
         sc.box(x, y, -3, W, W, 3, OT, depth=-1e6 + x + y, outline=False)
         tank(sc, x + 30, y + 75)
         server(sc, x + 55, y + 20)                     # the generator shed
         door_switch(sc, x + 95, y + 70)                # the perimeter gate
-        sc.wire([(x + 90, y + 40, 40), (px + 40, py + 70, 20)], '#e8710a', 2.2, dash='6 6', under=False)
+        sc.wire([(x + 90, y + 40, 40), (px + 60, py + 70, 12)], '#e8710a', 2.2, dash='6 6', under=False)
         tx, ty = P(x, y + W, 0)
         sc.overlay.append(f'<text x="{tx - 12:.1f}" y="{ty + 4:.1f}" font-size="14" font-weight="700" '
                           f'fill="{shade(OT, 0.42)}" text-anchor="end">{name}</text>')
-        sc.pts += [(tx - 170, ty - 14)]
-    sc.box(px, py, -3, W + 10, W + 10, 3, GW, depth=-1e6 + px + py, outline=False)
-    raspberry_pi(sc, px + 22, py + 40)
+        sc.pts += [(tx - 210, ty - 14)]
+    sc.box(px, py, -3, W + 10, W + 10, 3, OT, depth=-1e6 + px + py, outline=False)
+    esp32(sc, px + 33, py + 50)
+    sc.waves(px + 91, py + 65, 14)
     qx, qy = px + 2 * 165, py - 2 * 165 + 165
     for i, name in enumerate(['pi01', 'pi02']):
         sx, sy = qx + i * 165, qy + i * 165 - 165
-        sc.box(sx, sy, -3, W, W, 3, '#dfe9fb', depth=-1e6 + sx + sy, outline=False)
+        sc.box(sx, sy, -3, W, W, 3, GW, depth=-1e6 + sx + sy, outline=False)
         raspberry_pi(sc, sx + 18, sy + 34)
-        sc.wire([(sx + 20, sy + 60, 26), (px + 110, py + 70, 26)], '#188038', 2.4, under=False, arrow='end')
+        sc.wire([(sx + 20, sy + 60, 26), (px + 100, py + 70, 16)], '#1a73e8', 2.4, dash='7 6', under=False,
+                arrow='end')
         tx, ty = P(sx + W, sy + W, 0)
         sc.overlay.append(f'<text x="{tx:.1f}" y="{ty + 22:.1f}" font-size="14" font-weight="700" fill="#3c4043" '
                           f'text-anchor="middle">{name}: your SENTINEL node</text>')
         sc.pts += [(tx - 110, ty), (tx + 110, ty + 30)]
     cx, cy = P(px + W + 10, py + W + 10, 0)
     sc.overlay.append(f'<text x="{cx:.1f}" y="{cy + 24:.1f}" font-size="14" font-weight="700" '
-                      f'fill="{shade(GW, 0.42)}" text-anchor="middle">pi00 (trainer) · 192.168.4.10:5020</text>'
+                      f'fill="{shade(OT, 0.42)}" text-anchor="middle">ESP32 plant · 192.168.4.1:502</text>'
                       f'<text x="{cx:.1f}" y="{cy + 42:.1f}" font-size="12.5" fill="#3c4043" '
-                      f'text-anchor="middle">simulates all three outposts, one Modbus unit each</text>')
+                      f'text-anchor="middle">PS-01 as before, plus the three outposts</text>')
     sc.pts += [(cx - 180, cy), (cx + 180, cy + 50)]
-    sc.tag(px + 230, py - 60, 40, 'Modbus TCP, every 5 s', '#188038')
+    sc.tag(px + 230, py - 60, 40, 'Modbus TCP over Wi-Fi, every 5 s', '#1a73e8')
     save(sc, 'sentinel-fig-1-outposts.svg')
 
 

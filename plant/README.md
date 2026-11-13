@@ -1,7 +1,13 @@
 # PS-01 plant firmware (ESP32)
 
 The shared field device for the course. It runs the plant Wi-Fi network `PS01-PLANT` (192.168.4.1) and a
-Modbus TCP server on port 502. Flash it once onto the ROBO ESP32 from the ESP32 kit, before Day 1.
+Modbus TCP server on port 502 with two sets of registers:
+
+- **PS-01 pump station** (registers 0–3), driven by the real kit parts: Days 2 and 3.
+- **Op SENTINEL outposts** ALPHA, BRAVO and CHARLIE (registers 10–33), simulated: the Day 3 afternoon project.
+  See `src/sentinel.h`, and `code/sentinel/README.md` for creating events from the serial monitor.
+
+Flash it once onto the ROBO ESP32 from the ESP32 kit, before Day 1.
 
 ## Hardware
 
@@ -32,7 +38,10 @@ Pins live in `src/config.h`. Set your own Wi-Fi password there before flashing.
 - Press D34: the light flashes red and the horn sounds. Press D35 to reset.
 - Connect all three Pis at once and run `modbus_read.py` on each, to confirm the access point passes traffic
   between Wi-Fi clients and serves several Modbus clients together.
+- Run `code/sentinel/outpost_read.py`: all three outposts show `link OK`. Type `silence bravo` in the serial
+  monitor: BRAVO shows `link LOST` and its data age grows. Type `restore bravo`.
 
 ## Register map
 
-See the table at the top of `src/main.cpp`; Day 2, Topic 7 explains it.
+PS-01: the table at the top of `src/main.cpp` (Day 2, Topic 7 explains it).
+Op SENTINEL: the table at the top of `src/sentinel.h` (also in `sentinel.md`).

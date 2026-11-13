@@ -13,11 +13,11 @@ A forward operating base supports three remote outposts: **ALPHA**, **BRAVO** an
 | A **shelter** cooled by air-conditioning, powered by the generator | Without the generator, the shelter heats up |
 | A **perimeter gate** | It opens for patrols; left open, it is a security risk |
 
-Each outpost's controller reports over **Modbus TCP**. All three are reached through one gateway address, and you tell them apart by **unit ID**. In this exercise the trainer's Pi, `pi00`, simulates all three.
+Each outpost's controller reports by radio to a **data concentrator** at the base, which serves all three over **Modbus TCP**, each outpost in its own block of registers. In this exercise the ESP32 plant you already know plays the concentrator: it simulates the three outposts next to the PS-01 registers, on the same address and port.
 
 **Figure 1 — The exercise**
 
-![Three outposts, ALPHA, BRAVO and CHARLIE, each with a water tank, a generator and a perimeter gate, simulated by the trainer's pi00 at 192.168.4.10 port 5020; pi01 and pi02 each poll pi00 over Modbus TCP every 5 seconds](images/sentinel-fig-1-outposts.svg)
+![Three outposts, ALPHA, BRAVO and CHARLIE, each with a water tank, a generator and a perimeter gate, served by the ESP32 plant at 192.168.4.1 port 502 in register blocks starting at 10, 20 and 30; pi01 and pi02 each poll the ESP32 over Modbus TCP on Wi-Fi every 5 seconds](images/sentinel-fig-1-outposts.svg)
 
 ## Mission
 
@@ -34,22 +34,25 @@ There are no trick questions and no scores. The aim is to apply what you built o
 
 | Setting | Value |
 |---|---|
-| Address | `192.168.4.10`, port `5020` (on the plant Wi-Fi) |
-| Unit IDs | `1` ALPHA, `2` BRAVO, `3` CHARLIE |
+| Address | `192.168.4.1`, port `502`: the ESP32 plant, as on Day 2 |
+| Register blocks | ALPHA from `10`, BRAVO from `20`, CHARLIE from `30` |
 | Access | Read only |
 
-The register map is the same for every outpost:
+Each outpost uses the same layout, starting at its block's first address (`b` = 10, 20 or 30):
 
 | Address | Table | Name | Scaling | Meaning |
 |---|---|---|---|---|
-| IR0 | Input register | `fuel` | ÷ 10 → % | Generator fuel, 0.0–100.0 % |
-| IR1 | Input register | `water` | ÷ 10 → % | Water tank, 0.0–100.0 % |
-| IR2 | Input register | `shelter_temp` | ÷ 10 → °C | Shelter temperature |
-| IR3 | Input register | `uptime` | seconds | Time since the outpost's controller started |
-| DI0 | Discrete input | `generator` | — | 1 = running |
-| DI1 | Discrete input | `gate` | — | 1 = open |
+| IR b | Input register | `fuel` | ÷ 10 → % | Generator fuel, 0.0–100.0 % |
+| IR b+1 | Input register | `water` | ÷ 10 → % | Water tank, 0.0–100.0 % |
+| IR b+2 | Input register | `shelter_temp` | ÷ 10 → °C | Shelter temperature |
+| IR b+3 | Input register | `data_age` | seconds | How old the outpost's values are; grows while its link is down |
+| DI b | Discrete input | `generator` | — | 1 = running |
+| DI b+1 | Discrete input | `gate` | — | 1 = open |
+| DI b+2 | Discrete input | `link_ok` | — | 1 = fresh data from the outpost; 0 = link lost, values frozen |
 
-> **Unit IDs in code:** every pymodbus read takes `device_id=`, for example `client.read_input_registers(0, count=4, device_id=2)` reads BRAVO. One connection serves all three outposts.
+So BRAVO's fuel is input register 20, and CHARLIE's link bit is discrete input 32. One Modbus connection reads all three outposts, and the PS-01 registers 0–3 are still there, unchanged.
+
+> **When the link bit is 0,** the concentrator still answers, but the outpost's values are the last ones it heard, `data_age` seconds ago. Never show them as current: an old fuel reading presented as live is worse than no reading.
 
 ## Tasks
 
@@ -69,6 +72,8 @@ python outpost_read.py --unit 2
 
 Note each outpost's fuel and water now. Which one will need attention first?
 
+> **Practising alone?** `cp ~/course/code/sentinel/sentinel_sim.py ~/iiot/ && python sentinel_sim.py` runs a copy of the outposts on your own Pi. Point your programs at `127.0.0.1`, port `5020`, and type events into it yourself (`help` lists them).
+
 ### 2 — Plan
 
 On paper, before any code (Day 3, Topic 13):
@@ -79,8 +84,8 @@ On paper, before any code (Day 3, Topic 13):
 ### 3 — Poll and store
 
 Write `~/iiot/sentinel_node.py`:
-- Poll the three outposts every 5 seconds with **one** Modbus connection. *Built on:* `ModbusPlant.read()` in `plant.py` (Day 2, Topic 9), with `device_id=unit` added.
-- An outpost that does not answer gives a reading with status `NO_ANSWER` and empty values, never a crash, and the other two outposts are still read.
+- Poll the three outposts every 5 seconds with **one** Modbus connection: 4 input registers and 3 discrete inputs from each block. *Built on:* `ModbusPlant.read()` in `plant.py` (Day 2, Topic 9), with the block's first address instead of 0.
+- Give every reading a status: `OK`; `LINK_LOST` when the outpost's link bit is 0 (keep `data_age`, but not the frozen values); `NO_ANSWER` when the ESP32 itself does not answer. Never crash, and always read the other outposts.
 - Store every reading in SQLite, for example `~/iiot/data/sentinel.db`. *Built on:* the store thread in Day 3's `gateway.py`.
 
 ### 4 — Publish without losing anything
@@ -102,7 +107,7 @@ Email through Postfix on your Pi (Day 3, Topic 15). *Built on:* `alerts.py`: reu
 
 | Alert | Raised when | Suggested wait |
 |---|---|---|
-| Outpost not answering | Status `NO_ANSWER` | 60 s |
+| Outpost link lost | Status `LINK_LOST` or `NO_ANSWER` | 60 s |
 | Fuel low | Fuel below 20 % | 30 s |
 | Generator stopped | Generator not running | 30 s |
 | Gate left open | Gate open | 2 min (patrols open it briefly) |
@@ -128,7 +133,7 @@ Run `sentinel_node.py` as a systemd service, like the gateway (Day 1, Topic 3), 
 
 ## During the exercise
 
-The trainer will create events at the outposts so you can watch your node react: fuel leaks, generator failures, gates left open, an outpost that goes silent. Keep a short log:
+The trainer will create events at the outposts so you can watch your node react: fuel leaks, generator failures, gates left open, an outpost whose link goes down. Keep a short log:
 
 | Time | Outpost | What happened | How you noticed (dashboard, email, both) |
 |---|---|---|---|
@@ -144,7 +149,7 @@ Each participant, about five minutes:
 ## Done when
 
 - [ ] All three outposts appear on your dashboard and update every 5 seconds
-- [ ] A silent outpost shows as `lost` and the other two keep updating
+- [ ] An outpost with a lost link shows as `lost` and the other two keep updating
 - [ ] Stopping your broker for a minute loses no readings
 - [ ] You received at least one alert email and its matching *CLEARED*
 - [ ] `sentinel_node.py` runs as a service and comes back after `sudo reboot`

@@ -17,6 +17,8 @@
  *     HR0  stack light     0 off, 1 green, 2 amber, 3 red
  *     HR1  outlet valve    0..100 % open (servo 0..180 degrees)
  *
+ * Op SENTINEL outposts (Day 3 afternoon) use registers 10 to 33: see sentinel.h.
+ *
  * Local safety wins: while the e-stop is active the valve is forced shut, the light flashes red and the
  * horn sounds, whatever the gateways write. Their writes are kept and take effect again after RESET.
  */
@@ -28,6 +30,7 @@
 #include <ESP32Servo.h>
 #include <U8g2lib.h>
 #include "config.h"
+#include "sentinel.h"
 
 enum { IR_LEVEL = 0, IR_TEMP, IR_HUM, IR_UPTIME };
 enum { DI_ESTOP = 0, DI_FAULT };
@@ -42,7 +45,7 @@ U8G2_SSD1306_128X64_NONAME_F_HW_I2C oled(U8G2_R0, U8X8_PIN_NONE);
 
 bool estop = false;
 float levelFiltered = 0;
-uint32_t tKnob = 0, tDht = 0, tOled = 0, tBlink = 0;
+uint32_t tKnob = 0, tDht = 0, tOled = 0, tBlink = 0, tSentinel = 0;
 bool blinkOn = false;
 int lastServoAngle = -1;
 
@@ -157,6 +160,8 @@ void setup() {
   mb.addCoil(C_HORN, false, 1);
   mb.addHreg(HR_LIGHT, 1, 2);      // start: light green, valve shut
   mb.Hreg(HR_VALVE, 0);
+  randomSeed(esp_random());
+  sentinelBegin(mb);               // Op SENTINEL outposts, registers 10 to 33 (Day 3 afternoon)
 }
 
 void loop() {
@@ -166,6 +171,8 @@ void loop() {
   if (now - tKnob >= 200) { tKnob = now; readKnob(); }
   if (now - tDht >= 2000) { tDht = now; readDht(); }   // the DHT11 is slow: never faster than every 2 s
   if (now - tBlink >= 300) { tBlink = now; blinkOn = !blinkOn; }
+  if (now - tSentinel >= 1000) { tSentinel = now; sentinelStep(mb, now); }
+  sentinelSerial();
   mb.Ireg(IR_UPTIME, (uint16_t)((now / 1000) & 0xFFFF));
   driveOutputs();
   if (now - tOled >= 500) { tOled = now; drawOled(); }
