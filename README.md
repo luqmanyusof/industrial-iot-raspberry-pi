@@ -68,5 +68,3 @@ industrial-iot-raspberry-pi/
 │       ├── relay_test.py        # relay output (Topic 6)
 │       └── pump_control.py      # START/STOP with door interlock (Topic 6)
 ```
-
-> **Trainer material** (delivery notes, timing, common problems) lives on the `trainer` branch, not here. `git checkout trainer` to see it.
