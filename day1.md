@@ -378,9 +378,9 @@ flowchart LR
    source .venv/bin/activate
    ```
    Your prompt now starts with `(.venv)`. The `--system-site-packages` option lets the venv also see the GPIO libraries you just installed with `apt`, which are built specially for the Pi.
-3. Install the packages the course uses, and record them:
+3. Install the packages the course uses, at the versions these notes were tested with, and record them:
    ```bash
-   pip install requests pymodbus paho-mqtt
+   pip install requests pymodbus==3.16.2 paho-mqtt==2.2.0
    pip freeze > requirements.txt
    ```
 3. In VS Code, press **F1** → **Python: Select Interpreter** → choose `./.venv/bin/python`.

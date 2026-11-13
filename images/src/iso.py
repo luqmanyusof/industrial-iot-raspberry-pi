@@ -327,3 +327,18 @@ def gap_point(k, z=0.0, shift=0.0):
     """World point in the gap between plate k and k+1 (shift moves it toward the viewer)."""
     x, y = origin(k)
     return (x + PLATE + (GAP - PLATE) / 2 + shift, y + PLATE / 2 - GAP / 2 + shift, z)
+
+
+def dht11(sc, x, y):
+    dep = x + y
+    sc.box(x, y, 0, 26, 20, 3, '#1f5fbf', dep)                       # small carrier board
+    sc.box(x + 4, y + 3, 3, 16, 14, 14, '#4fc3f7', dep + 0.1)        # blue DHT11 body
+    for i in range(4):
+        sc.face_y(x + 6 + i * 3.4, y + 17.05, 6, 1.8, 9, '#1e88b4', dep + 0.2)   # grille slots
+
+
+def knob(sc, x, y):
+    dep = x + y
+    sc.box(x, y, 0, 26, 24, 3, '#2f9e55', dep)                       # Grove board
+    sc.box(x + 7, y + 6, 3, 12, 12, 5, '#26282b', dep + 0.1)          # pot body
+    sc.cylinder(x + 13, y + 12, 8, 5, 10, '#eceff1', dep + 0.2)      # knob cap
