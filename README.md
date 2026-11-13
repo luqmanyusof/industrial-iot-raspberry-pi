@@ -16,7 +16,7 @@ You will set up a Raspberry Pi as the **edge gateway** of a small water pump sta
 
 ## How to read this
 
-Every topic has a **Goal**, numbered **steps**, a **Try it** section where you change and break things on purpose, and a **Checkpoint ✅** you must reach before moving on. Topics go in order: each one builds on the files from the one before.
+Every topic has a **Goal**, numbered **steps**, numbered **figures** that show the flow and structure, a **Try it** section where you change and break things on purpose, and a **Checkpoint ✅** you must reach before moving on. Topics go in order: each one builds on the files from the one before.
 
 ## The one rule of this course
 
@@ -54,6 +54,8 @@ By the end of the course you will be able to:
 industrial-iot-raspberry-pi/
 ├── README.md
 ├── day1.md
+├── images/
+│   └── day1-gpio-wiring.svg     # Topic 6 wiring picture
 ├── code/
 │   └── day1/
 │       ├── sim_sensor.py        # simulated pump station sensors (Topic 3)
