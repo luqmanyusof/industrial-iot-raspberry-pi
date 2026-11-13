@@ -275,11 +275,7 @@ def store_loop(q: queue.Queue, stop: threading.Event) -> None:
     db.close()
 ```
 
-2. The gateway now publishes a new topic, `ps01/<gateway>/events`. Allow it in the broker's ACL: open `/etc/mosquitto/acl` with `sudo nano` and add one line under `user gateway`:
-   ```conf
-   topic write ps01/+/events
-   ```
-   Then `sudo systemctl restart mosquitto`.
+2. The gateway now also publishes events (start-ups, alerts) on `ps01/<gateway>/events`. Your Day 2 ACL already allows it; check with `sudo grep events /etc/mosquitto/acl`.
 3. Set `PLANT_HOST, PLANT_PORT` as on Day 2, and restart the gateway:
    ```bash
    sudo systemctl restart gateway
@@ -298,7 +294,6 @@ def store_loop(q: queue.Queue, stop: threading.Event) -> None:
    Every 2 seconds one more row waits. Start the broker (`sudo systemctl start mosquitto`): the count drops back to 0 within seconds, and a subscriber sees the missing readings arrive, oldest first, with their original timestamps.
 2. **Through a reboot.** Stop the broker, wait a minute, then `sudo reboot`. After the Pi is back, the backlog is still sent: the outbox lives on the SD card, not in memory.
 3. **Spot the duplicate.** Save a subscriber's output to a file during an outage test: `mosquitto_sub … -t 'ps01/+/telemetry' > seen.txt`. Look at the `msg_id` values around the moment the broker returned. You may find one that appears twice. That is QoS 1 doing its job, and the reason every message has an ID.
-4. **The trap.** Remove the `events` line from the ACL and restart Mosquitto, then restart the gateway. The outbox marks the `gateway_started` event as *sent*, but your subscriber never sees it: the broker acknowledged it, then quietly refused it. An acknowledgement proves the broker *received* a message, not that it was *allowed*. Put the line back.
 
 > **Why does the dashboard draw a backlog as a spike?** The Node-RED chart plots each value at the moment it *arrives*. A historian would plot it at the reading's own `ts`. On the operator's live screen, arrival time is acceptable; in a historical record, it is not.
 

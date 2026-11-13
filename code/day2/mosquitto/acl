@@ -1,10 +1,11 @@
 # Who may do what. Anything not listed is refused.
 
-# gateway.py publishes readings, alarm state and its own online/offline status
+# gateway.py publishes readings, alarm state, its own online/offline status, and events (Day 3)
 user gateway
 topic write ps01/+/status
 topic write ps01/+/telemetry
 topic write ps01/+/alarm
+topic write ps01/+/events
 
 # pump_control_mqtt.py takes commands and reports the pump state
 user pump

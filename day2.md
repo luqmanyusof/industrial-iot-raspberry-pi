@@ -899,7 +899,7 @@ Right now any program on your Pi can publish anything, including a fake reading 
 
 | User | Used by | May read | May write |
 |---|---|---|---|
-| `gateway` | `gateway.py` | — | `status`, `telemetry`, `alarm` |
+| `gateway` | `gateway.py` | — | `status`, `telemetry`, `alarm`, and `events` (used from Day 3) |
 | `pump` | `pump_control_mqtt.py` | `pump/cmd` | `pump/state` |
 | `dashboard` | Node-RED, and you with `mosquitto_sub` | `ps01/#` | `pump/cmd` |
 
@@ -935,11 +935,12 @@ acl_file /etc/mosquitto/acl
 ```conf
 # Who may do what. Anything not listed is refused.
 
-# gateway.py publishes readings, alarm state and its own online/offline status
+# gateway.py publishes readings, alarm state, its own online/offline status, and events (Day 3)
 user gateway
 topic write ps01/+/status
 topic write ps01/+/telemetry
 topic write ps01/+/alarm
+topic write ps01/+/events
 
 # pump_control_mqtt.py takes commands and reports the pump state
 user pump
