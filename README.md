@@ -12,7 +12,8 @@ You will set up a Raspberry Pi as the **edge gateway** of a small water pump sta
 
 - **[Day 1 — Raspberry Pi and Python](day1.md)**: where the Pi sits in an industrial system, setting it up headless and hardening it, a threaded gateway that reads, stores and forwards, and a door switch and pump relay with a fail-safe interlock.
 - **[Day 2 — Interfacing with the Physical World](day2.md)**: how field devices connect, polling the PS-01 plant over Modbus, a level alarm, MQTT secured with logins and ACLs, and a Node-RED operator dashboard whose commands must obey the local interlock.
-- **[Day 3 — Building a Smart Project](day3.md)** *(morning drafted; afternoon project Op SENTINEL in progress)*: design for failure, store-and-forward, email alerts through a mail server on the Pi, production readiness and a troubleshooting drill.
+- **[Day 3 — Building a Smart Project](day3.md)**: design for failure, store-and-forward, email alerts through a mail server on the Pi, production readiness and a troubleshooting drill.
+  - **Afternoon project: [Op SENTINEL — Forward Operating Base Utilities Watch](sentinel.md)**: watch three simulated outposts, keep a complete record, and alert the duty officer.
 
 ## How to read this
 
@@ -56,6 +57,7 @@ industrial-iot-raspberry-pi/
 ├── day1.md
 ├── day2.md
 ├── day3.md
+├── sentinel.md                  # Day 3 afternoon project brief
 ├── plant/                       # ESP32 firmware for the shared PS-01 plant (flash once, before Day 1)
 ├── images/
 │   ├── day*-fig-*.svg / .png    # figures used in the day files
@@ -83,8 +85,12 @@ industrial-iot-raspberry-pi/
 │   │   ├── pump_control_mqtt.py # remote START/STOP, local interlock (Topic 10)
 │   │   ├── mosquitto/           # broker settings, ACL and mqtt.json template (Topic 11)
 │   │   └── ps01-dashboard-flow.json  # Node-RED Dashboard 2.0 flow (Topic 12)
-│   └── day3/
-│       ├── outbox.py            # store-and-forward outbox (Topic 14)
-│       ├── alerts.py            # alert rules and mailer (Topic 15)
-│       └── gateway.py           # Day 3 edge node (Topics 14-15)
+│   ├── day3/
+│   │   ├── outbox.py            # store-and-forward outbox (Topic 14)
+│   │   ├── alerts.py            # alert rules and mailer (Topic 15)
+│   │   └── gateway.py           # Day 3 edge node (Topics 14-15)
+│   └── sentinel/
+│       ├── sentinel_sim.py      # three simulated outposts, run on the trainer's Pi
+│       ├── outpost_read.py      # read the outposts by unit ID
+│       └── README.md            # how to run the outposts and create events
 ```

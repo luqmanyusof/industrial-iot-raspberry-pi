@@ -1,6 +1,6 @@
 # Day 3 — Building a Smart Project
 
-> **This morning your gateway becomes an edge node you could leave on a remote site:** it loses nothing when the network fails, emails a person when something needs one, and tells you when it has been restarted. **This afternoon** you put it all to work in **Op SENTINEL**.
+> **This morning your gateway becomes an edge node you could leave on a remote site:** it loses nothing when the network fails, emails a person when something needs one, and tells you when it has been restarted. **This afternoon** you put it all to work in **[Op SENTINEL](sentinel.md)**.
 > **Carry-over:** from Day 2 you need the `gateway` service reading the plant, Mosquitto with logins and the ACL (Topic 11), and the Node-RED dashboard.
 
 ## Before you start
@@ -614,4 +614,4 @@ flowchart TD
 - Postfix delivering alerts to `pelatih` on your Pi
 - A hardware watchdog, a persistent journal capped at 100 MB, and a synchronised clock
 
-**This afternoon:** Op SENTINEL. Your edge node skills, three outposts, and a trainer who will try to catch you out.
+**This afternoon:** [Op SENTINEL](sentinel.md). Your edge node skills, applied to three remote outposts.

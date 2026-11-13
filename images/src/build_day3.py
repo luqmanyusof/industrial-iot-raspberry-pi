@@ -4,7 +4,8 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from iso import caption, gap_point, laptop, origin, plate, raspberry_pi, server, Scene  # noqa: E402
+from iso import (P, Scene, caption, door_switch, gap_point, laptop, origin, plate, raspberry_pi,  # noqa: E402
+                 server, shade, tank)
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 GW, IT, GREY = '#fff1c9', '#dfe9fb', '#eef1f5'
@@ -38,5 +39,45 @@ def fig_15_1():
     save(sc, 'day3-fig-15-1-mail-path.svg')
 
 
+# ---------- Op SENTINEL: three outposts, one trainer Pi, every station polls ----------
+def fig_sentinel():
+    sc = Scene()
+    OT, W, R = '#ffe8d6', 120, 150
+    outposts = ['ALPHA · unit 1', 'BRAVO · unit 2', 'CHARLIE · unit 3']
+    px, py = 290 + R, -290 + R                         # pi00 plate, level with the middle outpost
+    for r, name in enumerate(outposts):
+        x, y = r * R, r * R
+        sc.box(x, y, -3, W, W, 3, OT, depth=-1e6 + x + y, outline=False)
+        tank(sc, x + 30, y + 75)
+        server(sc, x + 55, y + 20)                     # the generator shed
+        door_switch(sc, x + 95, y + 70)                # the perimeter gate
+        sc.wire([(x + 90, y + 40, 40), (px + 40, py + 70, 20)], '#e8710a', 2.2, dash='6 6', under=False)
+        tx, ty = P(x, y + W, 0)
+        sc.overlay.append(f'<text x="{tx - 12:.1f}" y="{ty + 4:.1f}" font-size="14" font-weight="700" '
+                          f'fill="{shade(OT, 0.42)}" text-anchor="end">{name}</text>')
+        sc.pts += [(tx - 170, ty - 14)]
+    sc.box(px, py, -3, W + 10, W + 10, 3, GW, depth=-1e6 + px + py, outline=False)
+    raspberry_pi(sc, px + 22, py + 40)
+    qx, qy = px + 2 * 165, py - 2 * 165 + 165
+    for i, name in enumerate(['pi01', 'pi02']):
+        sx, sy = qx + i * 165, qy + i * 165 - 165
+        sc.box(sx, sy, -3, W, W, 3, '#dfe9fb', depth=-1e6 + sx + sy, outline=False)
+        raspberry_pi(sc, sx + 18, sy + 34)
+        sc.wire([(sx + 20, sy + 60, 26), (px + 110, py + 70, 26)], '#188038', 2.4, under=False, arrow='end')
+        tx, ty = P(sx + W, sy + W, 0)
+        sc.overlay.append(f'<text x="{tx:.1f}" y="{ty + 22:.1f}" font-size="14" font-weight="700" fill="#3c4043" '
+                          f'text-anchor="middle">{name}: your SENTINEL node</text>')
+        sc.pts += [(tx - 110, ty), (tx + 110, ty + 30)]
+    cx, cy = P(px + W + 10, py + W + 10, 0)
+    sc.overlay.append(f'<text x="{cx:.1f}" y="{cy + 24:.1f}" font-size="14" font-weight="700" '
+                      f'fill="{shade(GW, 0.42)}" text-anchor="middle">pi00 (trainer) · 192.168.4.10:5020</text>'
+                      f'<text x="{cx:.1f}" y="{cy + 42:.1f}" font-size="12.5" fill="#3c4043" '
+                      f'text-anchor="middle">simulates all three outposts, one Modbus unit each</text>')
+    sc.pts += [(cx - 180, cy), (cx + 180, cy + 50)]
+    sc.tag(px + 230, py - 60, 40, 'Modbus TCP, every 5 s', '#188038')
+    save(sc, 'sentinel-fig-1-outposts.svg')
+
+
 if __name__ == '__main__':
     fig_15_1()
+    fig_sentinel()
