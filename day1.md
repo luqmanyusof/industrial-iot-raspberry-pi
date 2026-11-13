@@ -4,7 +4,7 @@
 
 ## Before you start
 
-- [ ] Raspberry Pi, power supply and microSD card on your desk
+- [ ] Raspberry Pi 4 Model B, power supply and microSD card on your desk
 - [ ] Single-channel relay module and 6 female-to-female jumper wires (for Topic 6)
 - [ ] Raspberry Pi Imager 2.0 or later installed on your laptop
 - [ ] VS Code installed, with the **Remote - SSH** extension
@@ -94,9 +94,11 @@ Your Pi lives on **two networks** at once, exactly like a real gateway:
 | Office side (**IT**, information technology) | `eth0`, the LAN (Local Area Network) port | Your laptop, by cable | Internet, SSH, VS Code, dashboards |
 | Plant side (**OT**, operational technology) | `wlan0`, the Wi-Fi | The ESP32 plant's own Wi-Fi network `PS01-PLANT` | Talking to plant equipment and the other Pi |
 
-**Figure 2.1 — Your Pi's two networks**
+**Figure 2.1 — Everyone builds the same station: laptop, cable and Pi, all joined to one shared plant**
 
-![Office side with internet and laptop, joined by a LAN cable to the Pi, which joins the plant's Wi-Fi with the ESP32 and the neighbour's Pi](images/day1-fig-2-1-two-networks.svg)
+![Three identical stations, for participant 1, participant 2 and the trainer, each a laptop joined by a LAN cable to a Raspberry Pi; all three Pis join the Wi-Fi of one shared ESP32 plant](images/day1-fig-2-1-two-networks.svg)
+
+> **Same setup for everyone.** Each participant, and the trainer, has their own laptop, LAN cable and Raspberry Pi 4 Model B, and does every step in these notes the same way. Only your Pi's name and plant address differ. The trainer's Pi, `pi00`, follows along on the big screen.
 
 > **The plant network has no internet, on purpose.** The only machine that touches both sides is your Pi, and it does not pass traffic from one side to the other. This is the Purdue boundary from Topic 1, built with real cables.
 
@@ -108,7 +110,7 @@ Your Pi lives on **two networks** at once, exactly like a real gateway:
 
 1. Insert the microSD card into your laptop (use the adapter if needed).
 2. Open **Raspberry Pi Imager**.
-3. **Device:** choose your Raspberry Pi model.
+3. **Device:** choose **Raspberry Pi 4**.
 4. **OS:** choose **Raspberry Pi OS (other)** → **Raspberry Pi OS Lite (64-bit)**. Lite has no desktop; a gateway does not need one.
 5. **Storage:** choose your microSD card. Double-check: everything on it will be erased.
 6. Go through the customisation steps the wizard shows:
@@ -190,6 +192,7 @@ The ESP32 plant runs its own Wi-Fi network, `PS01-PLANT`. Every device on it has
 | Device | Plant address |
 |---|---|
 | ESP32 plant (the access point) | `192.168.4.1` |
+| `pi00` (the trainer's Pi) | `192.168.4.10` |
 | `pi01` | `192.168.4.11` |
 | `pi02` | `192.168.4.12` |
 

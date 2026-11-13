@@ -110,27 +110,49 @@ def fig_1_2():
     save(sc, 'day1-fig-1-2-purdue.svg')
 
 
-# ---------- Figure 2.1: two networks ----------
+# ---------- Figure 2.1: everyone builds the same station ----------
 def fig_2_1():
+    from iso import shade
     sc = Scene()
-    plate(sc, 0, IT); plate(sc, 1, GW); plate(sc, 2, OT)
-    cloud(sc, *at(0, 35, 35)[:2], 55)
-    put(sc, laptop, 0, 55, 70)
-    put(sc, raspberry_pi, 1, 32, 47)
-    put(sc, esp32, 2, 15, 25)
-    put(sc, raspberry_pi, 2, 50, 85)
-    sc.wire([at(0, 60, 40, 30), at(0, 70, 60, 8)], '#9aa0a6', 2.5, dash='2 6', under=False)
-    sc.wire([at(0, 125, 110, 1), gap_point(0, 1, 30), at(1, 40, 110, 1), at(1, 60, 103, 2)], CABLE, 4, depth=-10)
-    sc.wire([at(1, 90, 60, 30), gap_point(1, 40), at(2, 70, 40, 18)], WIFI, 2.5, dash='7 6', under=False)
-    sc.wire([at(2, 72, 40, 18), at(2, 100, 100, 24)], WIFI, 2.5, dash='7 6', under=False)
-    sc.waves(*at(2, 70, 40, 14))
-    sc.waves(*at(1, 90, 60, 30))
-    sc.tag(*gap_point(0, 1, 30), 'LAN cable · eth0', CABLE)
-    sc.tag(*gap_point(1, 75), 'Wi-Fi · wlan0', WIFI)
-    caption(sc, 0, ['Office side (IT)', 'internet + your laptop,', 'which shares its internet'], IT)
-    caption(sc, 1, ['Gateway', 'your Pi (pi01) · 192.168.4.11', 'the only link between the two'], GW)
-    caption(sc, 2, ['Plant side (OT) · PS01-PLANT', 'ESP32 access point · 192.168.4.1',
-                    "neighbour's Pi · 192.168.4.12"], OT)
+    W, G, R = 130, 185, 165                     # plate size, column step (along x/-y), row step (along x/+y)
+    rows = [('Participant 1', 'pi01', '192.168.4.11'), ('Participant 2', 'pi02', '192.168.4.12'),
+            ('Trainer', 'pi00', '192.168.4.10')]
+    ex, ey = 2 * G + R, -2 * G + R             # shared ESP32 plate, level with the middle row
+    for r, (who, name, ip) in enumerate(rows):
+        lx, ly = r * R, r * R                   # laptop plate
+        qx_, qy_ = G + r * R, -G + r * R        # Pi plate
+        sc.box(lx, ly, -3, W, W, 3, IT, depth=-1e6 + lx + ly, outline=False)
+        sc.box(qx_, qy_, -3, W, W, 3, GW, depth=-1e6 + qx_ + qy_, outline=False)
+        laptop(sc, lx + 30, ly + 45)
+        raspberry_pi(sc, qx_ + 22, qy_ + 38)
+        sc.wire([(lx + 100, ly + 75, 1), (qx_ + 15, qy_ + 110, 1), (qx_ + 50, qy_ + 96, 2)], CABLE, 4,
+                depth=-1e5 + r)
+        sc.wire([(qx_ + 80, qy_ + 55, 28), (ex + 85, ey + 75, 16)], WIFI, 2.2, dash='7 6', under=False)
+        sc.waves(qx_ + 80, qy_ + 55, 28)
+        tx, ty = P(lx, ly + W, 0)
+        sc.overlay.append(
+            f'<text x="{tx - 14:.1f}" y="{ty - 4:.1f}" font-size="14" font-weight="700" fill="#202124" '
+            f'text-anchor="end">{who}</text><text x="{tx - 14:.1f}" y="{ty + 14:.1f}" font-size="12.5" '
+            f'fill="#3c4043" text-anchor="end">laptop + {name} · {ip}</text>')
+        sc.pts += [(tx - 220, ty - 20), (tx, ty + 20)]
+        if r == 0:
+            sc.tag(*((lx + 100 + qx_ + 15) / 2, (ly + 75 + qy_ + 110) / 2, 1), 'LAN cable · eth0', CABLE)
+            sc.tag(*((qx_ + 80 + ex + 85) / 2, (qy_ + 55 + ey + 75) / 2, 40), 'Wi-Fi · wlan0', WIFI)
+    sc.box(ex, ey, -3, W + 20, W + 20, 3, OT, depth=-1e6 + ex + ey, outline=False)
+    esp32(sc, ex + 45, ey + 60)
+    sc.waves(ex + 103, ey + 75, 14)
+    for x, y, text, col in ((0, 0, 'Office side (IT)', IT), (G, -G, 'Gateway', GW),
+                            (ex + 10, ey, 'Plant side (OT)', OT)):
+        hx, hy = P(x, y, 0)
+        sc.overlay.append(f'<text x="{hx:.1f}" y="{hy - 46:.1f}" font-size="15" font-weight="700" '
+                          f'fill="{shade(col, 0.42)}" text-anchor="middle">{text}</text>')
+        sc.pts += [(hx - 60, hy - 66)]
+    cx, cy = P(ex + W + 20, ey + W + 20, 0)
+    sc.overlay.append(f'<text x="{cx:.1f}" y="{cy + 24:.1f}" font-size="14" font-weight="700" '
+                      f'fill="{shade(OT, 0.42)}" text-anchor="middle">One shared ESP32 plant</text>'
+                      f'<text x="{cx:.1f}" y="{cy + 42:.1f}" font-size="12.5" fill="#3c4043" '
+                      f'text-anchor="middle">Wi-Fi PS01-PLANT · 192.168.4.1</text>')
+    sc.pts += [(cx - 120, cy), (cx + 120, cy + 50)]
     save(sc, 'day1-fig-2-1-two-networks.svg')
 
 

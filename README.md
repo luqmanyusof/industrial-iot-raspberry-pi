@@ -36,7 +36,7 @@ By the end of the course you will be able to:
 ## What you need
 
 **Per participant**
-- Raspberry Pi with power supply and a microSD card (16 GB or more)
+- Raspberry Pi 4 Model B with power supply and a microSD card (16 GB or more)
 - Single-channel relay module and 6 female-to-female jumper wires (from Day 1, Topic 6)
 - Laptop (Windows, macOS or Linux) with internet, and administrator rights to share it
 - LAN cable, plus a USB-to-Ethernet adapter if your laptop has no LAN port
