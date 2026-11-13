@@ -1,0 +1,8 @@
+{
+  "host": "localhost",
+  "port": 1883,
+  "logins": {
+    "gateway": {"username": "gateway", "password": "GATEWAY-PASSWORD"},
+    "pump": {"username": "pump", "password": "PUMP-PASSWORD"}
+  }
+}

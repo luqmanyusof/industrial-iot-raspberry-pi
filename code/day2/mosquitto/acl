@@ -1,0 +1,17 @@
+# Who may do what. Anything not listed is refused.
+
+# gateway.py publishes readings, alarm state and its own online/offline status
+user gateway
+topic write ps01/+/status
+topic write ps01/+/telemetry
+topic write ps01/+/alarm
+
+# pump_control_mqtt.py takes commands and reports the pump state
+user pump
+topic read ps01/+/pump/cmd
+topic write ps01/+/pump/state
+
+# Node-RED dashboard (and you, with mosquitto_sub): sees everything, may only send pump commands
+user dashboard
+topic read ps01/#
+topic write ps01/+/pump/cmd

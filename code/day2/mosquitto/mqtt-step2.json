@@ -1,0 +1,9 @@
+{
+  "host": "localhost",
+  "port": 8883,
+  "ca_file": "/home/pelatih/iiot/certs/ca.crt",
+  "logins": {
+    "gateway": {"username": "gateway", "password": "GATEWAY-PASSWORD"},
+    "pump": {"username": "pump", "password": "PUMP-PASSWORD"}
+  }
+}

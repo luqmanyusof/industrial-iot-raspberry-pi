@@ -1,0 +1,717 @@
+[
+  {
+    "id": "ps01-tab",
+    "type": "tab",
+    "label": "PS-01 dashboard",
+    "disabled": false,
+    "info": "Operator dashboard for Stesen Pam PS-01. Industrial IoT course, Day 2, Topic 12."
+  },
+  {
+    "id": "ps01-tls",
+    "type": "tls-config",
+    "name": "PS-01 lab CA",
+    "cert": "",
+    "key": "",
+    "ca": "/home/pelatih/iiot/certs/ca.crt",
+    "certname": "",
+    "keyname": "",
+    "caname": "",
+    "servername": "",
+    "verifyservercert": true,
+    "alpnprotocol": ""
+  },
+  {
+    "id": "ps01-broker",
+    "type": "mqtt-broker",
+    "name": "PS-01 broker (TLS)",
+    "broker": "localhost",
+    "port": "8883",
+    "tls": "ps01-tls",
+    "clientid": "",
+    "autoConnect": true,
+    "usetls": true,
+    "protocolVersion": "4",
+    "keepalive": "15",
+    "cleansession": true,
+    "autoUnsubscribe": true,
+    "birthTopic": "",
+    "birthQos": "0",
+    "birthPayload": "",
+    "birthMsg": {},
+    "closeTopic": "",
+    "closeQos": "0",
+    "closePayload": "",
+    "closeMsg": {},
+    "willTopic": "",
+    "willQos": "0",
+    "willPayload": "",
+    "willMsg": {},
+    "userProps": "",
+    "sessionExpiry": ""
+  },
+  {
+    "id": "ps01-ui-base",
+    "type": "ui-base",
+    "name": "PS-01",
+    "path": "/dashboard",
+    "includeClientData": true,
+    "acceptsClientConfig": [
+      "ui-notification",
+      "ui-control"
+    ],
+    "showPathInSidebar": false,
+    "navigationStyle": "default",
+    "titleBarStyle": "default"
+  },
+  {
+    "id": "ps01-ui-theme",
+    "type": "ui-theme",
+    "name": "PS-01 theme",
+    "colors": {
+      "surface": "#1f3a5f",
+      "primary": "#1a73e8",
+      "bgPage": "#eef1f5",
+      "groupBg": "#ffffff",
+      "groupOutline": "#d0d7de"
+    },
+    "sizes": {
+      "density": "default",
+      "pagePadding": "12px",
+      "groupGap": "12px",
+      "groupBorderRadius": "6px",
+      "widgetGap": "12px"
+    }
+  },
+  {
+    "id": "ps01-ui-page",
+    "type": "ui-page",
+    "name": "Stesen Pam PS-01",
+    "ui": "ps01-ui-base",
+    "path": "/ps01",
+    "icon": "water-pump",
+    "layout": "grid",
+    "theme": "ps01-ui-theme",
+    "order": 1,
+    "className": "",
+    "visible": "true",
+    "disabled": "false"
+  },
+  {
+    "id": "ps01-g-tank",
+    "type": "ui-group",
+    "name": "Tank",
+    "page": "ps01-ui-page",
+    "width": "6",
+    "height": "1",
+    "order": 1,
+    "showTitle": true,
+    "className": "",
+    "visible": "true",
+    "disabled": "false",
+    "groupType": "default"
+  },
+  {
+    "id": "ps01-g-status",
+    "type": "ui-group",
+    "name": "Status",
+    "page": "ps01-ui-page",
+    "width": "3",
+    "height": "1",
+    "order": 2,
+    "showTitle": true,
+    "className": "",
+    "visible": "true",
+    "disabled": "false",
+    "groupType": "default"
+  },
+  {
+    "id": "ps01-g-pump",
+    "type": "ui-group",
+    "name": "Pump",
+    "page": "ps01-ui-page",
+    "width": "3",
+    "height": "1",
+    "order": 3,
+    "showTitle": true,
+    "className": "",
+    "visible": "true",
+    "disabled": "false",
+    "groupType": "default"
+  },
+  {
+    "id": "ps01-g-room",
+    "type": "ui-group",
+    "name": "Pump room",
+    "page": "ps01-ui-page",
+    "width": "3",
+    "height": "1",
+    "order": 4,
+    "showTitle": true,
+    "className": "",
+    "visible": "true",
+    "disabled": "false",
+    "groupType": "default"
+  },
+  {
+    "id": "in-telemetry",
+    "type": "mqtt in",
+    "name": "",
+    "topic": "ps01/+/telemetry",
+    "qos": "1",
+    "datatype": "json",
+    "broker": "ps01-broker",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 140,
+    "y": 80,
+    "wires": [
+      [
+        "fn-split"
+      ]
+    ],
+    "z": "ps01-tab"
+  },
+  {
+    "id": "fn-split",
+    "type": "function",
+    "name": "split the reading",
+    "outputs": 5,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 360,
+    "y": 80,
+    "func": "// Remember which gateway this broker belongs to (used by the pump buttons)\nflow.set('gateway', msg.topic.split('/')[1]);\n\nconst r = msg.payload;\nconst one = (v, unit) => (v === null || v === undefined) ? '\u2014' : v.toFixed(1) + unit;\nlet plant = r.status;\nif (r.e_stop) plant += ' \u00b7 E-STOP ACTIVE';\n\nreturn [\n    r.tank_level_pct === null ? null : { payload: r.tank_level_pct },              // gauge\n    r.tank_level_pct === null ? null : { topic: 'tank level', payload: r.tank_level_pct },  // chart\n    { payload: one(r.room_temp_c, ' \u00b0C') },\n    { payload: one(r.room_humidity_pct, ' %') },\n    { payload: plant },\n];",
+    "wires": [
+      [
+        "gauge-level"
+      ],
+      [
+        "chart-level"
+      ],
+      [
+        "txt-temp"
+      ],
+      [
+        "txt-hum"
+      ],
+      [
+        "txt-plant"
+      ]
+    ],
+    "z": "ps01-tab"
+  },
+  {
+    "id": "gauge-level",
+    "type": "ui-gauge",
+    "name": "Tank level",
+    "group": "ps01-g-tank",
+    "order": 1,
+    "width": "3",
+    "height": "4",
+    "gtype": "gauge-34",
+    "gstyle": "rounded",
+    "title": "Tank level",
+    "units": "%",
+    "icon": "",
+    "prefix": "",
+    "suffix": "%",
+    "segments": [
+      {
+        "from": "0",
+        "color": "#188038"
+      },
+      {
+        "from": "80",
+        "color": "#e8a33d"
+      },
+      {
+        "from": "90",
+        "color": "#d93025"
+      }
+    ],
+    "min": "0",
+    "max": "100",
+    "sizeThickness": 16,
+    "sizeGap": 4,
+    "sizeKeyThickness": 8,
+    "styleRounded": true,
+    "styleGlow": false,
+    "className": "",
+    "x": 640,
+    "y": 40,
+    "wires": [],
+    "z": "ps01-tab"
+  },
+  {
+    "id": "chart-level",
+    "type": "ui-chart",
+    "group": "ps01-g-tank",
+    "name": "Tank level, last 10 minutes",
+    "label": "Tank level, last 10 minutes",
+    "order": 2,
+    "chartType": "line",
+    "category": "topic",
+    "categoryType": "msg",
+    "xAxisLabel": "",
+    "xAxisProperty": "",
+    "xAxisPropertyType": "timestamp",
+    "xAxisType": "time",
+    "xAxisFormat": "",
+    "xAxisFormatType": "auto",
+    "xmin": "",
+    "xmax": "",
+    "yAxisLabel": "%",
+    "yAxisProperty": "payload",
+    "yAxisPropertyType": "msg",
+    "ymin": "0",
+    "ymax": "100",
+    "bins": 10,
+    "action": "append",
+    "stackSeries": false,
+    "pointShape": "false",
+    "pointRadius": 4,
+    "showLegend": false,
+    "removeOlder": "10",
+    "removeOlderUnit": "60",
+    "removeOlderPoints": "",
+    "colors": [
+      "#1a73e8"
+    ],
+    "textColor": [
+      "#666666"
+    ],
+    "textColorDefault": true,
+    "gridColor": [
+      "#e5e5e5"
+    ],
+    "gridColorDefault": true,
+    "width": "3",
+    "height": "4",
+    "className": "",
+    "interpolation": "linear",
+    "x": 650,
+    "y": 80,
+    "wires": [
+      []
+    ],
+    "z": "ps01-tab"
+  },
+  {
+    "id": "txt-temp",
+    "type": "ui-text",
+    "group": "ps01-g-room",
+    "order": 1,
+    "width": 0,
+    "height": 0,
+    "name": "Temperature",
+    "label": "Temperature",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "style": false,
+    "font": "",
+    "fontSize": 16,
+    "color": "#717171",
+    "className": "",
+    "x": 640,
+    "y": 120,
+    "wires": [],
+    "z": "ps01-tab"
+  },
+  {
+    "id": "txt-hum",
+    "type": "ui-text",
+    "group": "ps01-g-room",
+    "order": 2,
+    "width": 0,
+    "height": 0,
+    "name": "Humidity",
+    "label": "Humidity",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "style": false,
+    "font": "",
+    "fontSize": 16,
+    "color": "#717171",
+    "className": "",
+    "x": 640,
+    "y": 160,
+    "wires": [],
+    "z": "ps01-tab"
+  },
+  {
+    "id": "txt-plant",
+    "type": "ui-text",
+    "group": "ps01-g-status",
+    "order": 3,
+    "width": 0,
+    "height": 0,
+    "name": "Plant",
+    "label": "Plant",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "style": false,
+    "font": "",
+    "fontSize": 16,
+    "color": "#717171",
+    "className": "",
+    "x": 630,
+    "y": 200,
+    "wires": [],
+    "z": "ps01-tab"
+  },
+  {
+    "id": "in-status",
+    "type": "mqtt in",
+    "name": "",
+    "topic": "ps01/+/status",
+    "qos": "1",
+    "datatype": "utf8",
+    "broker": "ps01-broker",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 130,
+    "y": 260,
+    "wires": [
+      [
+        "txt-gw"
+      ]
+    ],
+    "z": "ps01-tab"
+  },
+  {
+    "id": "txt-gw",
+    "type": "ui-text",
+    "group": "ps01-g-status",
+    "order": 1,
+    "width": 0,
+    "height": 0,
+    "name": "Gateway",
+    "label": "Gateway",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "style": false,
+    "font": "",
+    "fontSize": 16,
+    "color": "#717171",
+    "className": "",
+    "x": 630,
+    "y": 260,
+    "wires": [],
+    "z": "ps01-tab"
+  },
+  {
+    "id": "in-alarm",
+    "type": "mqtt in",
+    "name": "",
+    "topic": "ps01/+/alarm",
+    "qos": "1",
+    "datatype": "utf8",
+    "broker": "ps01-broker",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 130,
+    "y": 320,
+    "wires": [
+      [
+        "txt-alarm",
+        "sw-high"
+      ]
+    ],
+    "z": "ps01-tab"
+  },
+  {
+    "id": "txt-alarm",
+    "type": "ui-text",
+    "group": "ps01-g-status",
+    "order": 2,
+    "width": 0,
+    "height": 0,
+    "name": "Alarm",
+    "label": "Alarm",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "style": false,
+    "font": "",
+    "fontSize": 16,
+    "color": "#717171",
+    "className": "",
+    "x": 630,
+    "y": 300,
+    "wires": [],
+    "z": "ps01-tab"
+  },
+  {
+    "id": "sw-high",
+    "type": "switch",
+    "name": "HIGH?",
+    "property": "payload",
+    "propertyType": "msg",
+    "rules": [
+      {
+        "t": "eq",
+        "v": "HIGH",
+        "vt": "str"
+      }
+    ],
+    "checkall": "true",
+    "repair": false,
+    "outputs": 1,
+    "x": 330,
+    "y": 360,
+    "wires": [
+      [
+        "chg-high"
+      ]
+    ],
+    "z": "ps01-tab"
+  },
+  {
+    "id": "chg-high",
+    "type": "change",
+    "name": "alarm message",
+    "rules": [
+      {
+        "t": "set",
+        "p": "payload",
+        "pt": "msg",
+        "to": "HIGH TANK LEVEL: red light and horn are on",
+        "tot": "str"
+      }
+    ],
+    "action": "",
+    "property": "",
+    "to": "",
+    "reg": false,
+    "x": 490,
+    "y": 360,
+    "wires": [
+      [
+        "notify"
+      ]
+    ],
+    "z": "ps01-tab",
+    "from": ""
+  },
+  {
+    "id": "in-pump",
+    "type": "mqtt in",
+    "name": "",
+    "topic": "ps01/+/pump/state",
+    "qos": "1",
+    "datatype": "json",
+    "broker": "ps01-broker",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 140,
+    "y": 440,
+    "wires": [
+      [
+        "fn-pump"
+      ]
+    ],
+    "z": "ps01-tab"
+  },
+  {
+    "id": "fn-pump",
+    "type": "function",
+    "name": "pump state",
+    "outputs": 3,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 350,
+    "y": 440,
+    "func": "const s = msg.payload;\n// Pop up a warning only when a START was refused by the interlock\nconst refused = (s.reason || '').includes('refused') ? { payload: s.reason } : null;\nreturn [\n    { payload: `${s.pump} \u00b7 door ${s.door || '?'}` },\n    { payload: s.reason },\n    refused,\n];",
+    "wires": [
+      [
+        "txt-pump"
+      ],
+      [
+        "txt-reason"
+      ],
+      [
+        "notify"
+      ]
+    ],
+    "z": "ps01-tab"
+  },
+  {
+    "id": "txt-pump",
+    "type": "ui-text",
+    "group": "ps01-g-pump",
+    "order": 1,
+    "width": 0,
+    "height": 0,
+    "name": "Pump",
+    "label": "Pump",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "style": false,
+    "font": "",
+    "fontSize": 16,
+    "color": "#717171",
+    "className": "",
+    "x": 630,
+    "y": 420,
+    "wires": [],
+    "z": "ps01-tab"
+  },
+  {
+    "id": "btn-start",
+    "type": "ui-button",
+    "group": "ps01-g-pump",
+    "name": "START",
+    "label": "START",
+    "order": 2,
+    "width": "3",
+    "height": "1",
+    "emulateClick": false,
+    "tooltip": "",
+    "color": "#ffffff",
+    "bgcolor": "#188038",
+    "className": "",
+    "icon": "play",
+    "iconPosition": "left",
+    "payload": "START",
+    "payloadType": "str",
+    "topic": "",
+    "topicType": "str",
+    "buttonColor": "#188038",
+    "textColor": "#ffffff",
+    "iconColor": "#ffffff",
+    "x": 130,
+    "y": 500,
+    "wires": [
+      [
+        "fn-cmd"
+      ]
+    ],
+    "z": "ps01-tab"
+  },
+  {
+    "id": "btn-stop",
+    "type": "ui-button",
+    "group": "ps01-g-pump",
+    "name": "STOP",
+    "label": "STOP",
+    "order": 3,
+    "width": "3",
+    "height": "1",
+    "emulateClick": false,
+    "tooltip": "",
+    "color": "#ffffff",
+    "bgcolor": "#d93025",
+    "className": "",
+    "icon": "stop",
+    "iconPosition": "left",
+    "payload": "STOP",
+    "payloadType": "str",
+    "topic": "",
+    "topicType": "str",
+    "buttonColor": "#d93025",
+    "textColor": "#ffffff",
+    "iconColor": "#ffffff",
+    "x": 130,
+    "y": 540,
+    "wires": [
+      [
+        "fn-cmd"
+      ]
+    ],
+    "z": "ps01-tab"
+  },
+  {
+    "id": "fn-cmd",
+    "type": "function",
+    "name": "command topic",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 330,
+    "y": 520,
+    "func": "const gw = flow.get('gateway');\nif (!gw) {\n    node.warn('No telemetry yet, so the gateway name is unknown');\n    return null;\n}\nmsg.topic = `ps01/${gw}/pump/cmd`;\nreturn msg;",
+    "wires": [
+      [
+        "out-cmd"
+      ]
+    ],
+    "z": "ps01-tab"
+  },
+  {
+    "id": "out-cmd",
+    "type": "mqtt out",
+    "name": "pump command",
+    "topic": "",
+    "qos": "1",
+    "retain": "false",
+    "respTopic": "",
+    "contentType": "",
+    "userProps": "",
+    "correl": "",
+    "expiry": "",
+    "broker": "ps01-broker",
+    "x": 530,
+    "y": 520,
+    "wires": [],
+    "z": "ps01-tab"
+  },
+  {
+    "id": "notify",
+    "type": "ui-notification",
+    "ui": "ps01-ui-base",
+    "position": "top right",
+    "colorDefault": false,
+    "color": "#d93025",
+    "displayTime": "6",
+    "showCountdown": true,
+    "outputs": 0,
+    "allowDismiss": true,
+    "dismissText": "Close",
+    "allowConfirm": false,
+    "confirmText": "Confirm",
+    "raw": false,
+    "className": "",
+    "name": "warning",
+    "x": 660,
+    "y": 480,
+    "wires": [],
+    "z": "ps01-tab"
+  },
+  {
+    "id": "txt-reason",
+    "type": "ui-text",
+    "group": "ps01-g-pump",
+    "order": 4,
+    "width": 0,
+    "height": 0,
+    "name": "Last event",
+    "label": "Last event",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "style": false,
+    "font": "",
+    "fontSize": 14,
+    "color": "#717171",
+    "className": "",
+    "x": 640,
+    "y": 460,
+    "wires": [],
+    "z": "ps01-tab"
+  }
+]
