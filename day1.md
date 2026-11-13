@@ -40,39 +40,13 @@ A Raspberry Pi is a **single-board computer (SBC)**: a full computer on one boar
 
 **Figure 1.1 — The system you build this week**
 
-```mermaid
-flowchart LR
-    subgraph plant["Stesen Pam PS-01"]
-        esp["ESP32 field device<br/>tank level, e-stop,<br/>stack light, alarm"]
-        io["Door switch and<br/>pump relay"]
-    end
-    gwy["Raspberry Pi<br/>edge gateway"]
-    up["Operators and servers<br/>dashboards, history"]
-    esp -- "Modbus TCP (Day 2)" --> gwy
-    io -- "GPIO (Day 1)" --> gwy
-    gwy -- "HTTP today,<br/>MQTT on Day 2" --> up
-    up -. "commands" .-> gwy
-    gwy -. "switch pump" .-> io
-    class gwy pi
-    classDef pi fill:#fff3cd,stroke:#b8860b,color:#000
-```
+![The system you build this week: ESP32 field device and door switch with relay, the Raspberry Pi gateway, and operators and servers](images/day1-fig-1-1-system.svg)
 
 ### 1.3 — IoT architecture: device → edge → server
 
 An **IoT** (Internet of Things) system moves data in three layers:
 
-```mermaid
-flowchart LR
-    dev["Devices<br/>sensors, switches,<br/>actuators"]
-    edge["Edge gateway<br/>collects, filters,<br/>secures, forwards"]
-    srv["Server / cloud<br/>history, dashboards,<br/>reports, analytics"]
-    dev -- "raw signals" --> edge
-    edge -- "clean, secured data" --> srv
-    srv -. "commands" .-> edge
-    edge -. "commands" .-> dev
-    class edge pi
-    classDef pi fill:#fff3cd,stroke:#b8860b,color:#000
-```
+![Devices send raw signals to the edge gateway, which sends clean, secured data to the server; commands flow back](images/day1-fig-1-3-layers.svg)
 
 The **edge** is where the plant meets the network. Doing work at the edge, instead of sending every raw reading to a server, means the site keeps working when the network link is down, uses less bandwidth, and reacts faster.
 
@@ -92,23 +66,7 @@ An **IIoT** (Industrial IoT) edge gateway usually sits between Level 1 and Level
 
 **Figure 1.2 — Purdue levels, and where the gateway sits**
 
-```mermaid
-flowchart TB
-    L4["Level 4 — Enterprise<br/>ERP, email, business systems"]
-    L3["Level 3 — Site operations<br/>historian, production reports"]
-    L2["Level 2 — Supervisory<br/>SCADA, HMI screens"]
-    GW["IIoT edge gateway<br/>your Raspberry Pi"]
-    L1["Level 1 — Control<br/>PLCs, controllers"]
-    L0["Level 0 — Field<br/>sensors, switches, valves, motors, relays"]
-    L4 <--> L3
-    L3 <--> L2
-    L2 <--> GW
-    GW <--> L1
-    L1 <--> L0
-    GW <-. "simple I/O,<br/>wired directly" .-> L0
-    class GW pi
-    classDef pi fill:#fff3cd,stroke:#b8860b,color:#000
-```
+![Purdue levels stacked from Level 0 field devices up to Level 4 enterprise, with the IIoT edge gateway between Level 1 and Level 2](images/day1-fig-1-2-purdue.svg)
 
 Each arrow is a boundary where traffic can be checked and controlled.
 
@@ -138,20 +96,7 @@ Your Pi lives on **two networks** at once, exactly like a real gateway:
 
 **Figure 2.1 — Your Pi's two networks**
 
-```mermaid
-flowchart LR
-    subgraph it["Office side (IT)"]
-        inet["Internet"] --- lap["Your laptop<br/>shares its internet"]
-    end
-    pi["Your Pi (pi01)<br/>192.168.4.11<br/>the only link<br/>between the two"]
-    subgraph ot["Plant side (OT): PS01-PLANT"]
-        esp["ESP32 plant<br/>Wi-Fi access point<br/>192.168.4.1"] --- pi2["Neighbour's Pi<br/>192.168.4.12"]
-    end
-    lap -- "LAN cable<br/>(eth0)" --- pi
-    pi -- "Wi-Fi<br/>(wlan0)" --- esp
-    classDef pi fill:#fff3cd,stroke:#b8860b,color:#000
-    class pi pi
-```
+![Office side with internet and laptop, joined by a LAN cable to the Pi, which joins the plant's Wi-Fi with the ESP32 and the neighbour's Pi](images/day1-fig-2-1-two-networks.svg)
 
 > **The plant network has no internet, on purpose.** The only machine that touches both sides is your Pi, and it does not pass traffic from one side to the other. This is the Purdue boundary from Topic 1, built with real cables.
 
@@ -159,13 +104,7 @@ flowchart LR
 
 **Figure 2.2 — Headless setup: everything is decided before the first boot**
 
-```mermaid
-flowchart LR
-    A["Laptop<br/>Raspberry Pi Imager"] -- "writes OS +<br/>your settings" --> B["microSD card<br/>hostname, user,<br/>SSH on"]
-    B -- "insert, cable in,<br/>power on" --> C["First boot<br/>applies the settings<br/>(about 90 s)"]
-    C --> D["Gets an address<br/>from your laptop"]
-    D --> E["Reachable as<br/>pi01.local"]
-```
+![Raspberry Pi Imager writes the OS and settings to the microSD card, which goes into the Pi for its first boot](images/day1-fig-2-2-headless.svg)
 
 1. Insert the microSD card into your laptop (use the adapter if needed).
 2. Open **Raspberry Pi Imager**.
@@ -194,14 +133,7 @@ Your laptop stays on its own Wi-Fi for the internet, and lends that connection t
 
 **Figure 2.3 — Your laptop as the Pi's router**
 
-```mermaid
-flowchart LR
-    net["Internet"] --- wifi["Your laptop's<br/>Wi-Fi"]
-    wifi --> lap["Your laptop<br/>shares its connection,<br/>hands out an address"]
-    lap -- "LAN cable" --> pi["Raspberry Pi eth0<br/>gets an address from<br/>the laptop automatically"]
-    classDef pi fill:#fff3cd,stroke:#b8860b,color:#000
-    class lap pi
-```
+![The laptop gets the internet over Wi-Fi and shares it with the Pi over a LAN cable](images/day1-fig-2-3-laptop-router.svg)
 
 You need a LAN cable, a USB-to-Ethernet adapter if your laptop has no LAN port, and administrator rights on your laptop. Nothing changes on the Pi: it asks for an address on its LAN port automatically.
 
@@ -302,25 +234,7 @@ From now on, you edit files in VS Code on your laptop, and they are saved on the
 
 **Figure 2.4 — Two ways in, one encrypted door**
 
-```mermaid
-flowchart LR
-    subgraph laptop["Your laptop"]
-        term["Terminal /<br/>PowerShell"]
-        vsc["VS Code<br/>+ Remote-SSH"]
-    end
-    subgraph pi["Raspberry Pi (pi01)"]
-        sshd["SSH server<br/>port 22"]
-        shell["Shell as<br/>pelatih"]
-        vss["VS Code Server<br/>~/.vscode-server"]
-        files["Your files<br/>~/iiot"]
-    end
-    term -- "ssh, encrypted,<br/>over the LAN cable" --> sshd
-    vsc -- "SSH, encrypted,<br/>over the LAN cable" --> sshd
-    sshd --> shell
-    sshd --> vss
-    shell --> files
-    vss --> files
-```
+![Terminal and VS Code on the laptop reach the Pi over one encrypted SSH connection on port 22](images/day1-fig-2-4-two-ways-in.svg)
 
 ### 2.6 — Linux essentials
 
@@ -916,11 +830,7 @@ flowchart TB
 
 **Figure 5.1 — The pair lab: each gateway forwards to the other Pi**
 
-```mermaid
-flowchart LR
-    g1["pi01 · 192.168.4.11<br/>gateway.py"] -- "POST /readings<br/>over the plant Wi-Fi" --> r2["pi02 · 192.168.4.12<br/>receiver.py, port 8080<br/>open on wlan0"]
-    g2["pi02 · 192.168.4.12<br/>gateway.py"] -- "POST /readings<br/>over the plant Wi-Fi" --> r1["pi01 · 192.168.4.11<br/>receiver.py, port 8080<br/>open on wlan0"]
-```
+![pi01 and pi02 send readings to each other's receiver through the ESP32 access point](images/day1-fig-5-1-pair-lab.svg)
 
 1. Create `~/iiot/receiver.py` (or copy `code/day1/receiver.py`):
 
@@ -1303,18 +1213,7 @@ A relay is a switch worked by an electromagnet. The Pi's 3.3 V pin cannot drive 
 
 **Figure 6.4 — Inside the relay module**
 
-```mermaid
-flowchart TB
-    gpio["Pi GPIO27, pin 13<br/>3.3 V logic"] --> drv
-    subgraph mod["Relay module"]
-        drv["IN → driver<br/>transistor or optocoupler"]
-        vcc["VCC: 5 V from pin 2"] --> coil["relay coil<br/>(electromagnet)"]
-        drv -- "lets current<br/>flow through" --> coil
-        drv --> led["module LED"]
-        coil -- "pulls" --> con["contacts<br/>COM · NO · NC"]
-    end
-    con --> load["Load circuit<br/>nothing connected today"]
-```
+![Relay module with IN, VCC and GND wired from the Pi, the relay coil, the COM NO NC contacts and the module LED](images/day1-fig-6-4-relay-module.svg)
 
 1. Shut down. Connect the relay module: **VCC → pin 2**, **GND → pin 6**, **IN → pin 13**. Power up.
 2. Create `~/iiot/relay_test.py` (or copy `code/day1/relay_test.py`):

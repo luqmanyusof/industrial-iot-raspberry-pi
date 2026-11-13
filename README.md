@@ -55,7 +55,9 @@ industrial-iot-raspberry-pi/
 ├── README.md
 ├── day1.md
 ├── images/
-│   └── day1-gpio-wiring.svg     # Topic 6 wiring picture
+│   ├── day1-*.svg               # figures used in day1.md
+│   └── src/                     # Python that draws the isometric figures:
+│                                #   python3 images/src/build_day1.py
 ├── code/
 │   └── day1/
 │       ├── sim_sensor.py        # simulated pump station sensors (Topic 3)
