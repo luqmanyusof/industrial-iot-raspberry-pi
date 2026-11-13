@@ -8,8 +8,9 @@
 - [ ] Single-channel relay module and 6 female-to-female jumper wires (for Topic 6)
 - [ ] Raspberry Pi Imager 2.0 or later installed on your laptop
 - [ ] VS Code installed, with the **Remote - SSH** extension
-- [ ] The lab Wi-Fi name and password (on the whiteboard)
-- [ ] Only needed if Wi-Fi fails: a LAN cable, plus a USB-to-Ethernet adapter if your laptop has no LAN port
+- [ ] A LAN cable, plus a USB-to-Ethernet adapter if your laptop has no LAN port
+- [ ] Administrator rights on your laptop (to share its internet with the Pi)
+- [ ] The plant Wi-Fi password (on the whiteboard)
 - [ ] Your Pi number from the trainer: `pi01` or `pi02`
 
 **Our running use case:** *Stesen Pam PS-01*, a small water pump station. It has a storage tank (level in %), a pump motor (temperature in °C), a door on the pump house and a pump switched by a relay. Your Pi is the station's edge gateway.
@@ -111,7 +112,7 @@ flowchart TB
 
 Each arrow is a boundary where traffic can be checked and controlled.
 
-> **Why the levels matter:** each level is a security boundary. Traffic should only pass between neighbouring levels, through controlled points. On Day 2 you will secure the link above your gateway.
+> **Why the levels matter:** each level is a security boundary. Traffic should only pass between neighbouring levels, through controlled points. From Topic 2, your Pi sits on that boundary physically too: a cable to the office side, Wi-Fi into the plant. On Day 2 you will secure the link above your gateway.
 
 **Try it**
 1. On paper, map Stesen Pam PS-01 onto the five levels. Place: tank level sensor, pump motor, door switch, pump relay, your Raspberry Pi, the operator's dashboard, and the water utility's billing system.
@@ -124,19 +125,45 @@ Each arrow is a boundary where traffic can be checked and controlled.
 
 ## Topic 2 — Setting up the Raspberry Pi
 
-**Goal:** a Pi that boots without a screen or keyboard, joins the lab Wi-Fi, and that you can control from your laptop over SSH and VS Code.
+**Goal:** a Pi that boots without a screen or keyboard, gets the internet through your laptop's LAN cable, joins the plant's own Wi-Fi, and that you can control from your laptop over SSH and VS Code.
 
 **Open:** Raspberry Pi Imager on your laptop.
 
-### 2.1 — Write the OS to the microSD card
+Your Pi lives on **two networks** at once, exactly like a real gateway:
 
-**Figure 2.1 — Headless setup: everything is decided before the first boot**
+| Side | Interface on the Pi | Connected to | Used for |
+|---|---|---|---|
+| Office side (**IT**, information technology) | `eth0`, the LAN (Local Area Network) port | Your laptop, by cable | Internet, SSH, VS Code, dashboards |
+| Plant side (**OT**, operational technology) | `wlan0`, the Wi-Fi | The ESP32 plant's own Wi-Fi network `PS01-PLANT` | Talking to plant equipment and the other Pi |
+
+**Figure 2.1 — Your Pi's two networks**
 
 ```mermaid
 flowchart LR
-    A["Laptop<br/>Raspberry Pi Imager"] -- "writes OS +<br/>your settings" --> B["microSD card<br/>hostname, user,<br/>Wi-Fi, SSH on"]
-    B -- "insert,<br/>power on" --> C["First boot<br/>applies the settings<br/>(about 90 s)"]
-    C --> D["Joins the<br/>lab Wi-Fi"]
+    subgraph it["Office side (IT)"]
+        inet["Internet"] --- lap["Your laptop<br/>shares its internet"]
+    end
+    pi["Your Pi (pi01)<br/>192.168.4.11<br/>the only link<br/>between the two"]
+    subgraph ot["Plant side (OT): PS01-PLANT"]
+        esp["ESP32 plant<br/>Wi-Fi access point<br/>192.168.4.1"] --- pi2["Neighbour's Pi<br/>192.168.4.12"]
+    end
+    lap -- "LAN cable<br/>(eth0)" --- pi
+    pi -- "Wi-Fi<br/>(wlan0)" --- esp
+    classDef pi fill:#fff3cd,stroke:#b8860b,color:#000
+    class pi pi
+```
+
+> **The plant network has no internet, on purpose.** The only machine that touches both sides is your Pi, and it does not pass traffic from one side to the other. This is the Purdue boundary from Topic 1, built with real cables.
+
+### 2.1 — Write the OS to the microSD card
+
+**Figure 2.2 — Headless setup: everything is decided before the first boot**
+
+```mermaid
+flowchart LR
+    A["Laptop<br/>Raspberry Pi Imager"] -- "writes OS +<br/>your settings" --> B["microSD card<br/>hostname, user,<br/>SSH on"]
+    B -- "insert, cable in,<br/>power on" --> C["First boot<br/>applies the settings<br/>(about 90 s)"]
+    C --> D["Gets an address<br/>from your laptop"]
     D --> E["Reachable as<br/>pi01.local"]
 ```
 
@@ -153,49 +180,33 @@ flowchart LR
 | Localisation | Time zone `Asia/Kuala_Lumpur`, keyboard `us` |
 | Username | `pelatih` |
 | Password | Your own, at least 8 characters. Write it down. |
-| Wi-Fi | The lab network name and password |
+| Wi-Fi | **Leave empty** (skip). The Pi joins the plant's Wi-Fi in 2.4. |
 | Remote access | **Enable SSH**, with password authentication |
 
 7. Write the card and wait for **verification** to finish.
-8. Eject the card, put it into the Pi, then connect power. Wait about 90 seconds; the first boot takes longer than normal.
+8. Eject the card and put it into the Pi. **Do not power it on yet.**
 
 > **Why "headless"?** Equipment in the field rarely has a monitor attached. Setting up everything before the first boot is how gateways are deployed for real.
 
-### 2.2 — Connect over SSH
+### 2.2 — Share your laptop's internet over the LAN cable
 
-**SSH** (Secure Shell) gives you an encrypted terminal on a remote machine.
+Your laptop stays on its own Wi-Fi for the internet, and lends that connection to the Pi through the LAN cable. Your laptop becomes the Pi's router.
 
-1. On your laptop, open a terminal (Windows: **PowerShell**).
-2. Connect, using your hostname:
-   ```bash
-   ssh pelatih@pi01.local
-   ```
-3. The first time, type `yes` to accept the Pi's fingerprint, then your password.
-4. Your prompt changes to `pelatih@pi01:~ $`. You are now typing on the Pi.
-
-> **Error: "Could not resolve hostname"?** Your network does not pass `.local` names. Ask the trainer for your Pi's IP address from the router, then `ssh pelatih@<ip-address>`.
-
-> **Error: "REMOTE HOST IDENTIFICATION HAS CHANGED"?** You reflashed the card, so the Pi has a new identity. Remove the old one with `ssh-keygen -R pi01.local` and connect again.
-
-### 2.3 — No Wi-Fi? Share your laptop's connection over a LAN cable
-
-Use this only if your Pi cannot join the lab Wi-Fi (`pi01.local` never answers, even after 3 minutes). Your laptop stays on Wi-Fi and lends its connection to the Pi through a LAN (Local Area Network) cable. Your laptop becomes the Pi's router.
-
-**Figure 2.2 — Your laptop as the Pi's router**
+**Figure 2.3 — Your laptop as the Pi's router**
 
 ```mermaid
 flowchart LR
-    net["Internet"] --- wifi["Lab Wi-Fi"]
-    wifi -- "Wi-Fi" --> lap["Your laptop<br/>shares its connection,<br/>hands out an address"]
-    lap -- "LAN cable" --> pi["Raspberry Pi<br/>gets an address from<br/>the laptop automatically"]
+    net["Internet"] --- wifi["Your laptop's<br/>Wi-Fi"]
+    wifi --> lap["Your laptop<br/>shares its connection,<br/>hands out an address"]
+    lap -- "LAN cable" --> pi["Raspberry Pi eth0<br/>gets an address from<br/>the laptop automatically"]
     classDef pi fill:#fff3cd,stroke:#b8860b,color:#000
     class lap pi
 ```
 
-You need a LAN cable, and a USB-to-Ethernet adapter if your laptop has no LAN port. Nothing changes on the Pi: it asks for an address on its LAN port automatically.
+You need a LAN cable, a USB-to-Ethernet adapter if your laptop has no LAN port, and administrator rights on your laptop. Nothing changes on the Pi: it asks for an address on its LAN port automatically.
 
 1. Connect the cable from the Pi's LAN port to your laptop.
-2. Turn on sharing on your laptop. You need administrator rights; if your laptop is locked down, ask the trainer.
+2. Turn on sharing on your laptop.
 
    **Windows**
    1. Open **Control Panel → Network and Sharing Center → Change adapter settings**.
@@ -208,13 +219,14 @@ You need a LAN cable, and a USB-to-Ethernet adapter if your laptop has no LAN po
    2. **Share your connection from:** Wi-Fi. **To devices using:** your Ethernet or USB LAN adapter.
    3. Switch **Internet Sharing** on.
 
-   **Linux** (NetworkManager), replacing `eth0` with your LAN port's name from `ip a`:
+   **Linux** (NetworkManager), replacing `eth0` with your laptop's LAN port name from `ip a`:
    ```bash
    nmcli connection add type ethernet ifname eth0 con-name share-to-pi ipv4.method shared
    nmcli connection up share-to-pi
    ```
-3. Power-cycle the Pi (or unplug and replug the cable), wait 30 seconds, then connect as usual: `ssh pelatih@pi01.local`
-4. If the name does not resolve, find the Pi's address on your laptop:
+3. Power on the Pi and wait about 90 seconds; the first boot takes longer than normal.
+
+If `pi01.local` does not answer in the next step, find the Pi's address on your laptop:
 
 | Laptop | The Pi's address is in this range | How to find it |
 |---|---|---|
@@ -222,12 +234,64 @@ You need a LAN cable, and a USB-to-Ethernet adapter if your laptop has no LAN po
 | macOS | `192.168.2.x` | `arp -a`, look for an entry on `bridge100` |
 | Linux | `10.42.0.x` | `ip neigh`, look for an entry on your LAN port |
 
-   Then `ssh pelatih@<ip-address>`.
-5. On the Pi, check the internet works: `ping -c 3 8.8.8.8`
+### 2.3 — Connect over SSH
 
-> **What you lose on a cable:** the laptop hides the Pi behind itself, so **other people's Pis cannot reach yours**. Your Pi can still reach out: the internet, and the shared plant device on Day 2. For the Topic 5 pair lab, follow the note there.
+**SSH** (Secure Shell) gives you an encrypted terminal on a remote machine.
 
-### 2.4 — Connect VS Code
+1. On your laptop, open a terminal (Windows: **PowerShell**).
+2. Connect, using your hostname:
+   ```bash
+   ssh pelatih@pi01.local
+   ```
+3. The first time, type `yes` to accept the Pi's fingerprint, then your password.
+4. Your prompt changes to `pelatih@pi01:~ $`. You are now typing on the Pi.
+5. Check the internet works through your laptop: `ping -c 3 8.8.8.8`
+
+> **Error: "Could not resolve hostname"?** Your laptop cannot find the Pi by name. Use the address from the table in 2.2: `ssh pelatih@<ip-address>`.
+
+> **Error: "REMOTE HOST IDENTIFICATION HAS CHANGED"?** You reflashed the card, so the Pi has a new identity. Remove the old one with `ssh-keygen -R pi01.local` and connect again.
+
+### 2.4 — Join the plant network
+
+The ESP32 plant runs its own Wi-Fi network, `PS01-PLANT`. Every device on it has a fixed address, so programs can always find each other:
+
+| Device | Plant address |
+|---|---|
+| ESP32 plant (the access point) | `192.168.4.1` |
+| `pi01` | `192.168.4.11` |
+| `pi02` | `192.168.4.12` |
+
+1. Set the Wi-Fi country, so the radio is allowed to switch on:
+   ```bash
+   sudo raspi-config nonint do_wifi_country MY
+   sudo rfkill unblock wifi
+   ```
+2. Create the plant connection. Use **your** address (`.11` or `.12`) and the plant Wi-Fi password from the whiteboard:
+   ```bash
+   sudo nmcli connection add type wifi ifname wlan0 con-name plant ssid PS01-PLANT \
+     wifi-sec.key-mgmt wpa-psk wifi-sec.psk 'PLANT-PASSWORD' \
+     ipv4.method manual ipv4.addresses 192.168.4.11/24 ipv4.never-default yes \
+     ipv6.method disabled
+   sudo nmcli connection up plant
+   ```
+
+| Setting | What it does |
+|---|---|
+| `con-name plant` | The name you use for this connection from now on |
+| `ipv4.method manual`, `ipv4.addresses` | A fixed address instead of a random one |
+| `ipv4.never-default yes` | Never send internet traffic this way. The plant has no internet; your laptop's cable is the way out |
+| `ipv6.method disabled` | Keep the plant network simple: IPv4 only |
+
+3. Check both networks:
+   ```bash
+   nmcli device status
+   ping -c 3 192.168.4.1
+   ```
+   `eth0` and `wlan0` both show `connected`, and the ESP32 plant answers.
+
+> **Error: "Secrets were required, but not provided"?** The Wi-Fi password is wrong. Fix it with `sudo nmcli connection modify plant wifi-sec.psk 'PLANT-PASSWORD'`, then `sudo nmcli connection up plant`.
+
+### 2.5 — Connect VS Code
 
 1. In VS Code, press **F1** and choose **Remote-SSH: Connect to Host…**
 2. Type `pelatih@pi01.local` and press **Enter**. Choose **Linux** if asked, then enter your password.
@@ -236,7 +300,7 @@ You need a LAN cable, and a USB-to-Ethernet adapter if your laptop has no LAN po
 
 From now on, you edit files in VS Code on your laptop, and they are saved on the Pi.
 
-**Figure 2.3 — Two ways in, one encrypted door**
+**Figure 2.4 — Two ways in, one encrypted door**
 
 ```mermaid
 flowchart LR
@@ -250,15 +314,15 @@ flowchart LR
         vss["VS Code Server<br/>~/.vscode-server"]
         files["Your files<br/>~/iiot"]
     end
-    term -- "ssh, encrypted" --> sshd
-    vsc -- "SSH, encrypted" --> sshd
+    term -- "ssh, encrypted,<br/>over the LAN cable" --> sshd
+    vsc -- "SSH, encrypted,<br/>over the LAN cable" --> sshd
     sshd --> shell
     sshd --> vss
     shell --> files
     vss --> files
 ```
 
-### 2.5 — Linux essentials
+### 2.6 — Linux essentials
 
 Run each command in the terminal and look at the result.
 
@@ -286,7 +350,7 @@ Run each command in the terminal and look at the result.
    cd ~/iiot
    ```
 
-**Figure 2.4 — Where everything lives by the end of today (green: yours; red: system files, need sudo)**
+**Figure 2.5 — Where everything lives by the end of today (green: yours; red: system files, need sudo)**
 
 ```mermaid
 flowchart LR
@@ -299,15 +363,16 @@ flowchart LR
     iiot --> data["data/<br/>ps01.jsonl, ps01.db"]
     etc --> sysd["/etc/systemd/system/<br/>sim-sensor.service,<br/>gateway.service"]
     etc --> sshcfg["/etc/ssh/sshd_config.d/<br/>10-hardening.conf (Topic 4)"]
+    etc --> nm["/etc/NetworkManager/<br/>plant connection (2.4)"]
     classDef yours fill:#e6f4ea,stroke:#188038,color:#000
     classDef sys fill:#fce8e6,stroke:#c5221f,color:#000
     class home,iiot,keys,venv,code,data yours
-    class etc,sysd,sshcfg sys
+    class etc,sysd,sshcfg,nm sys
 ```
 
 > **`sudo` is a loaded gun.** Use it only when a command needs system rights (installing software, editing system files, managing services). Never run your own Python programs with `sudo`.
 
-### 2.6 — Services and logs
+### 2.7 — Services and logs
 
 A **service** is a program that Linux starts and supervises in the background. **systemd** is the part of Linux that manages services.
 
@@ -329,23 +394,26 @@ A **service** is a program that Linux starts and supervises in the background. *
 | `sudo systemctl enable/disable <name>` | Start it on boot, or not |
 | `journalctl -u <name> -f` | Follow its log live |
 
-### 2.7 — Network checks
+### 2.8 — Network checks
 
 ```bash
-hostname -I          # your Pi's IP address(es)
-ip a                 # all network interfaces and addresses
-ping -c 3 8.8.8.8    # can we reach the internet?
-ss -tulpn            # which programs are listening on which ports
+ip -4 addr               # your addresses: one on eth0, one on wlan0
+ip route                 # the only "default" route goes out through eth0
+sysctl net.ipv4.ip_forward   # 0 = the Pi does not pass traffic between its networks
+ping -c 3 8.8.8.8        # internet, through the cable
+ping -c 3 192.168.4.1    # the ESP32 plant, through the Wi-Fi
+ss -tulpn                # which programs are listening on which ports
 ```
 
 In the `ss` output, find port **22**. That is SSH, waiting for connections.
 
 **Try it**
-1. Ping your neighbour's Pi by name: `ping -c 3 pi02.local`.
-2. **Break it on purpose.** Stop SSH while you are connected through it: `sudo systemctl stop ssh`. Your current session stays open, but try a *new* connection from a second laptop terminal. It is refused. A stopped service means a closed door.
-3. **Put everything back:** `sudo systemctl start ssh`, and confirm a new connection works.
+1. Ping your neighbour's Pi on the plant network: `ping -c 3 192.168.4.12` (or `.11` if you are `pi02`).
+2. **Cut the plant link.** `sudo nmcli connection down plant`. Ping the ESP32 again: it fails, but `ping 8.8.8.8` still works. The two networks really are separate. Bring it back with `sudo nmcli connection up plant`.
+3. **Break it on purpose.** Stop SSH while you are connected through it: `sudo systemctl stop ssh`. Your current session stays open, but try a *new* connection from a second laptop terminal. It is refused. A stopped service means a closed door.
+4. **Put everything back:** `sudo systemctl start ssh`, and confirm a new connection works.
 
-**Checkpoint ✅** You can open VS Code on your Pi, `~/iiot/data` exists, the system is updated, and you can find your Pi's IP address and listening ports.
+**Checkpoint ✅** You can open VS Code on your Pi, the system is updated, `~/iiot/data` exists, and your Pi reaches both the internet (through `eth0`) and the ESP32 plant (through `wlan0`).
 
 ---
 
@@ -687,7 +755,7 @@ stateDiagram-v2
 
 ```mermaid
 flowchart TD
-    pkt(["Connection arrives<br/>from the network"]) --> fw{"ufw: is this port allowed?<br/>22 (rate-limited), 5353"}
+    pkt(["Connection arrives<br/>from the network"]) --> fw{"ufw: is this port allowed?<br/>22 and 5353, on the<br/>LAN cable (eth0) only"}
     fw -- "no" --> drop["Dropped silently"]
     fw -- "yes" --> listen{"Is a program listening?<br/>(ss -tulpn)"}
     listen -- "no" --> refused["Connection refused"]
@@ -772,8 +840,8 @@ sequenceDiagram
    ```
 2. Allow what you need, with a comment saying why:
    ```bash
-   sudo ufw limit 22/tcp comment 'SSH, rate-limited'
-   sudo ufw allow 5353/udp comment 'mDNS, so pi01.local still resolves'
+   sudo ufw limit in on eth0 to any port 22 proto tcp comment 'SSH, office side only, rate-limited'
+   sudo ufw allow in on eth0 to any port 5353 proto udp comment 'mDNS, so pi01.local still resolves'
    ```
 3. Switch it on and check it:
    ```bash
@@ -784,8 +852,9 @@ sequenceDiagram
 | Rule | Why |
 |---|---|
 | `default deny incoming` | Anything not listed is dropped |
-| `limit 22/tcp` | SSH allowed, but an address that tries 6 connections in 30 seconds is blocked for a while (slows password guessing) |
-| `allow 5353/udp` | Your laptop finds the Pi by name using mDNS (multicast DNS). Without it, `pi01.local` stops working |
+| `limit in on eth0 … port 22` | SSH allowed **only from the LAN cable side**, and an address that tries 6 connections in 30 seconds is blocked for a while (slows password guessing) |
+| `allow in on eth0 … port 5353` | Your laptop finds the Pi by name using mDNS (multicast DNS). Without it, `pi01.local` stops working |
+| *(nothing for `wlan0`)* | The plant side gets no way in at all. A compromised device in the plant cannot even knock on the gateway's door |
 
 ### 4.4 — Turn off what you do not use
 
@@ -804,9 +873,9 @@ sequenceDiagram
    ssh -o PubkeyAuthentication=no pelatih@pi01.local
    ```
    You get `Permission denied (publickey)`. That is what an attacker sees.
-2. Ask your neighbour to try the same command against your Pi. Same result.
+2. **Knock from the plant side.** Ask your neighbour to SSH to your Pi over the plant network: `ssh pelatih@192.168.4.11` (or `.12`). It hangs, then times out: `ufw` drops it without a reply.
 
-**Checkpoint ✅** You log in with your key, password login is refused, and `sudo ufw status` shows only SSH and mDNS allowed.
+**Checkpoint ✅** You log in with your key, password login is refused, `sudo ufw status` shows only SSH and mDNS allowed, both on `eth0`, and SSH from the plant side times out.
 
 ---
 
@@ -849,8 +918,8 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-    g1["pi01<br/>gateway.py"] -- "POST /readings" --> r2["pi02<br/>receiver.py, port 8080<br/>open in ufw"]
-    g2["pi02<br/>gateway.py"] -- "POST /readings" --> r1["pi01<br/>receiver.py, port 8080<br/>open in ufw"]
+    g1["pi01 · 192.168.4.11<br/>gateway.py"] -- "POST /readings<br/>over the plant Wi-Fi" --> r2["pi02 · 192.168.4.12<br/>receiver.py, port 8080<br/>open on wlan0"]
+    g2["pi02 · 192.168.4.12<br/>gateway.py"] -- "POST /readings<br/>over the plant Wi-Fi" --> r1["pi01 · 192.168.4.11<br/>receiver.py, port 8080<br/>open on wlan0"]
 ```
 
 1. Create `~/iiot/receiver.py` (or copy `code/day1/receiver.py`):
@@ -891,11 +960,11 @@ if __name__ == "__main__":
 
 2. Open the port in your firewall, then start the receiver and leave it running:
    ```bash
-   sudo ufw allow 8080/tcp comment 'Day 1 receiver lab'
+   sudo ufw allow in on wlan0 to any port 8080 proto tcp comment 'Day 1 receiver lab, plant side'
    python receiver.py
    ```
 
-> **Later, in production:** allow the port only from the one address that should use it: `sudo ufw allow from <sender-ip> to any port 8080 proto tcp`.
+> **Later, in production:** allow the port only from the one address that should use it: `sudo ufw allow in on wlan0 from 192.168.4.11 to any port 8080 proto tcp`.
 
 ### 5.3 — The gateway
 
@@ -925,7 +994,7 @@ import requests
 STATION = "PS-01"
 INTERVAL_S = 2
 DB_FILE = Path.home() / "iiot" / "data" / "ps01.db"
-FORWARD_URL = "http://pi02.local:8080/readings"  # your neighbour's Pi
+FORWARD_URL = "http://192.168.4.12:8080/readings"  # your neighbour's Pi, plant side
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(threadName)s %(levelname)s %(message)s")
 log = logging.getLogger("gateway")
@@ -1036,10 +1105,7 @@ if __name__ == "__main__":
     main()
 ```
 
-2. Set `FORWARD_URL` to your **neighbour's** Pi (`pi01` uses `pi02.local`, `pi02` uses `pi01.local`).
-
-   > **Pi on a LAN cable (2.3)?** Your neighbour cannot reach your receiver. Run both programs on your own Pi instead: keep `receiver.py` running in one terminal and set `FORWARD_URL = "http://127.0.0.1:8080/readings"`. Everything in this topic still works; only the hop between two Pis is missing.
-
+2. Set `FORWARD_URL` to your **neighbour's** plant address (`pi01` uses `192.168.4.12`, `pi02` uses `192.168.4.11`).
 3. Run it: `python gateway.py`. Your log shows `Stored and forwarded`, and your neighbour's receiver prints your readings.
 
 | Piece | What it does |
@@ -1089,8 +1155,8 @@ sqlite3 -header -column data/ps01.db "SELECT ts, tank_level_pct, pump_temp_c FRO
 
 **Try it**
 1. **Network down.** Ask your neighbour to stop their receiver (**Ctrl+C**). Your gateway logs `forward failed: ConnectionError`, but readings keep arriving every 2 seconds and keep landing in SQLite. Count them with the first query above.
-2. **Network silently dropping.** Ask your neighbour to start the receiver again, then close the port: `sudo ufw delete allow 8080/tcp`. Now every POST waits the full 2-second timeout (`ReadTimeout` or `ConnectTimeout`). Watch the `queue:` number: the sensor thread keeps its rhythm while the store thread falls behind. Without threads, your readings would slow down instead.
-3. **Put everything back:** your neighbour runs `sudo ufw allow 8080/tcp comment 'Day 1 receiver lab'`.
+2. **Network silently dropping.** Ask your neighbour to start the receiver again, then close the port: `sudo ufw delete allow in on wlan0 to any port 8080 proto tcp`. Now every POST waits the full 2-second timeout (`ReadTimeout` or `ConnectTimeout`). Watch the `queue:` number: the sensor thread keeps its rhythm while the store thread falls behind. Without threads, your readings would slow down instead.
+3. **Put everything back:** your neighbour runs `sudo ufw allow in on wlan0 to any port 8080 proto tcp comment 'Day 1 receiver lab, plant side'`.
 
 > **Recap:** readings that failed to forward are stored, but not resent. On Day 3 you add store-and-forward: the gateway resends what it missed once the link is back.
 
@@ -1414,7 +1480,8 @@ flowchart LR
 ## End of Day 1 — what you should have
 
 - A Raspberry Pi named `pi01` / `pi02`, updated, reachable from VS Code with an SSH key
-- Password login off, and a firewall allowing only SSH, mDNS and port 8080
+- On two networks: internet and SSH through your laptop's cable (`eth0`), the plant through `PS01-PLANT` (`wlan0`, `192.168.4.11` / `.12`)
+- Password login off, and a firewall allowing only SSH and mDNS from the cable side, and port 8080 from the plant side
 - `~/iiot/.venv` with `requests`, `pymodbus` and `paho-mqtt`, and `requirements.txt`
 - `~/iiot/gateway.py` running as the `gateway` service: reading, storing to `data/ps01.db` and forwarding to your neighbour
 - `~/iiot/pump_control.py` passing the interlock test sheet, with the relay wired to pin 13

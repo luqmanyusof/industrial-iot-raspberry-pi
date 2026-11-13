@@ -21,7 +21,7 @@ import requests
 STATION = "PS-01"
 INTERVAL_S = 2
 DB_FILE = Path.home() / "iiot" / "data" / "ps01.db"
-FORWARD_URL = "http://pi02.local:8080/readings"  # your neighbour's Pi
+FORWARD_URL = "http://192.168.4.12:8080/readings"  # your neighbour's Pi, plant side
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(threadName)s %(levelname)s %(message)s")
 log = logging.getLogger("gateway")
