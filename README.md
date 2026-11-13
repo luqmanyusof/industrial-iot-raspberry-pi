@@ -6,13 +6,13 @@ You will set up a Raspberry Pi as the **edge gateway** of a small water pump sta
 
 **The flow:** Raspberry Pi + Python → hardened gateway → door switch, relay and interlock → Modbus field device → MQTT + Node-RED → edge node with local AI
 
-**Acronyms used throughout:** **IoT** = Internet of Things · **IIoT** = Industrial IoT · **SBC** = Single-Board Computer · **MCU** = Microcontroller Unit · **OS** = Operating System · **SSH** = Secure Shell · **SQL** = Structured Query Language · **HTTP** = Hypertext Transfer Protocol · **GPIO** = General-Purpose Input/Output · **PLC** = Programmable Logic Controller · **SCADA** = Supervisory Control and Data Acquisition · **HMI** = Human-Machine Interface · **MQTT** = Message Queuing Telemetry Transport · **JSON** = JavaScript Object Notation · **TLS** = Transport Layer Security · **IT / OT** = Information / Operational Technology · **ADC** = Analog-to-Digital Converter · **FC** = (Modbus) Function Code · **QoS** = Quality of Service · **ACL** = Access Control List
+**Acronyms used throughout:** **IoT** = Internet of Things · **IIoT** = Industrial IoT · **SBC** = Single-Board Computer · **MCU** = Microcontroller Unit · **OS** = Operating System · **SSH** = Secure Shell · **SQL** = Structured Query Language · **HTTP** = Hypertext Transfer Protocol · **GPIO** = General-Purpose Input/Output · **PLC** = Programmable Logic Controller · **SCADA** = Supervisory Control and Data Acquisition · **HMI** = Human-Machine Interface · **MTA** = Mail Transfer Agent · **SMTP** = Simple Mail Transfer Protocol · **MQTT** = Message Queuing Telemetry Transport · **JSON** = JavaScript Object Notation · **TLS** = Transport Layer Security · **IT / OT** = Information / Operational Technology · **ADC** = Analog-to-Digital Converter · **FC** = (Modbus) Function Code · **QoS** = Quality of Service · **ACL** = Access Control List
 
 ## The 3 days
 
 - **[Day 1 — Raspberry Pi and Python](day1.md)**: where the Pi sits in an industrial system, setting it up headless and hardening it, a threaded gateway that reads, stores and forwards, and a door switch and pump relay with a fail-safe interlock.
 - **[Day 2 — Interfacing with the Physical World](day2.md)**: how field devices connect, polling the PS-01 plant over Modbus, a level alarm, MQTT secured with logins and ACLs, and a Node-RED operator dashboard whose commands must obey the local interlock.
-- **Day 3 — Building a Smart Project** *(draft pending)*: an edge node that polls equipment, detects anomalies locally, survives network loss and shows everything on a dashboard.
+- **[Day 3 — Building a Smart Project](day3.md)** *(morning drafted; afternoon project Op SENTINEL in progress)*: design for failure, store-and-forward, email alerts through a mail server on the Pi, production readiness and a troubleshooting drill.
 
 ## How to read this
 
@@ -55,11 +55,12 @@ industrial-iot-raspberry-pi/
 ├── README.md
 ├── day1.md
 ├── day2.md
+├── day3.md
 ├── plant/                       # ESP32 firmware for the shared PS-01 plant (flash once, before Day 1)
 ├── images/
-│   ├── day1-*.svg, day2-*.svg   # figures used in the day files
+│   ├── day*-fig-*.svg / .png    # figures used in the day files
 │   └── src/                     # Python that draws the isometric figures:
-│                                #   python3 images/src/build_day1.py (and build_day2.py)
+│                                #   python3 images/src/build_day1.py (also day2, day3)
 ├── code/
 │   ├── day1/
 │   │   ├── sim_sensor.py        # simulated pump station sensors (Topic 3)
@@ -71,15 +72,19 @@ industrial-iot-raspberry-pi/
 │   │   ├── door_switch.py       # digital input (Topic 6)
 │   │   ├── relay_test.py        # relay output (Topic 6)
 │   │   └── pump_control.py      # START/STOP with door interlock (Topic 6)
-│   └── day2/
-│       ├── plant_sim.py         # simulated plant, same Modbus map (Topic 8)
-│       ├── modbus_read.py       # read every register (Topic 8)
-│       ├── modbus_write.py      # write light, valve, horn (Topic 8)
-│       ├── plant.py             # ModbusPlant and LevelAlarm (Topic 9)
-│       ├── gateway.py           # Day 2 gateway with HTTP (Topic 9)
-│       ├── mqtt_link.py         # MQTT settings from ~/iiot/mqtt.json (Topic 10)
-│       ├── gateway_mqtt.py      # gateway publishing over MQTT (Topic 10)
-│       ├── pump_control_mqtt.py # remote START/STOP, local interlock (Topic 10)
-│       ├── mosquitto/           # broker settings, ACL and mqtt.json template (Topic 11)
-│       └── ps01-dashboard-flow.json  # Node-RED Dashboard 2.0 flow (Topic 12)
+│   ├── day2/
+│   │   ├── plant_sim.py         # simulated plant, same Modbus map (Topic 8)
+│   │   ├── modbus_read.py       # read every register (Topic 8)
+│   │   ├── modbus_write.py      # write light, valve, horn (Topic 8)
+│   │   ├── plant.py             # ModbusPlant and LevelAlarm (Topic 9)
+│   │   ├── gateway.py           # Day 2 gateway with HTTP (Topic 9)
+│   │   ├── mqtt_link.py         # MQTT settings from ~/iiot/mqtt.json (Topic 10)
+│   │   ├── gateway_mqtt.py      # gateway publishing over MQTT (Topic 10)
+│   │   ├── pump_control_mqtt.py # remote START/STOP, local interlock (Topic 10)
+│   │   ├── mosquitto/           # broker settings, ACL and mqtt.json template (Topic 11)
+│   │   └── ps01-dashboard-flow.json  # Node-RED Dashboard 2.0 flow (Topic 12)
+│   └── day3/
+│       ├── outbox.py            # store-and-forward outbox (Topic 14)
+│       ├── alerts.py            # alert rules and mailer (Topic 15)
+│       └── gateway.py           # Day 3 edge node (Topics 14-15)
 ```
