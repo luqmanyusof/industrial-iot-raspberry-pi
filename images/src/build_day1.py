@@ -4,7 +4,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from iso import (P, Scene, building, caption, cloud, door_switch, esp32, gap_point, laptop,  # noqa: E402
+from iso import (P, Scene, building, caption, cloud, esp32, gap_point, laptop,  # noqa: E402
                  monitor, origin, plate, plc, raspberry_pi, relay_module, sd_card, server, tank)
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
@@ -33,21 +33,23 @@ def put(sc, icon, k, dx, dy):
 def fig_1_1():
     sc = Scene()
     plate(sc, 0, OT); plate(sc, 1, GW); plate(sc, 2, IT)
-    put(sc, esp32, 0, 15, 15)
-    put(sc, door_switch, 0, 20, 80)
-    put(sc, relay_module, 0, 60, 100)
-    put(sc, raspberry_pi, 1, 32, 47)
+    put(sc, esp32, 0, 43, 60)
+    put(sc, raspberry_pi, 1, 15, 20)
+    put(sc, relay_module, 1, 60, 100)
     put(sc, monitor, 2, 10, 20)
     put(sc, server, 2, 90, 70)
-    sc.wire([at(0, 70, 30, 14), gap_point(0, 60), at(1, 60, 50, 30)], WIFI, 2.5, dash='7 6', under=False, arrow='end')
-    sc.wire([at(0, 120, 125, 3), gap_point(0, 3, 40), at(1, 60, 100, 3)], '#8e24aa', 3.5, depth=-10, arrow='end')
-    sc.wire([at(1, 110, 70, 12), gap_point(1, 30), at(2, 50, 60, 30)], CABLE, 3.5, under=False, arrow='end')
-    sc.tag(*gap_point(0, 95), 'Modbus TCP (Day 2)', WIFI)
-    sc.tag(*gap_point(0, 3, 40), 'GPIO (Day 1)', '#8e24aa')
+    for i, col in enumerate(('#8e24aa', '#d93025', '#26282b')):          # relay jumpers IN, VCC, GND
+        sc.wire([at(1, 65 + i * 4, 25, 10), at(1, 65 + i * 4, 25, 30), at(1, 118, 107 + i * 6, 30),
+                 at(1, 118, 107 + i * 6, 16)], col, 2.2, under=False)
+    sc.wire([at(1, 45, 25, 10), at(1, 45, 25, 24), at(1, 52, 25, 24), at(1, 52, 25, 10)], '#1a73e8', 2.5,
+            under=False)                                                 # door switch: a jumper
+    sc.wire([at(0, 100, 70, 14), gap_point(0, 50), at(1, 40, 40, 20)], WIFI, 2.5, dash='7 6', under=False, arrow='end')
+    sc.wire([at(1, 105, 50, 12), gap_point(1, 30), at(2, 50, 60, 30)], CABLE, 3.5, under=False, arrow='end')
+    sc.tag(*gap_point(0, 85), 'Modbus TCP (Day 2)', WIFI)
     sc.tag(*gap_point(1, 70), 'HTTP today, MQTT on Day 2', CABLE)
-    caption(sc, 0, ['Stesen Pam PS-01 (the plant)', 'ESP32 field device: tank level, e-stop,', 'stack light, alarm',
-                    'door switch and pump relay'], OT)
-    caption(sc, 1, ['Gateway', 'Raspberry Pi edge gateway'], GW)
+    caption(sc, 0, ['Stesen Pam PS-01 (the plant)', 'ESP32 field device: tank level,', 'e-stop, stack light, alarm'], OT)
+    caption(sc, 1, ['Gateway', 'Raspberry Pi edge gateway, with', 'the door switch (a jumper) and', 'pump relay on its GPIO'],
+            GW)
     caption(sc, 2, ['Operators and servers', 'dashboards and history;', 'commands come back down'], IT)
     save(sc, 'day1-fig-1-1-system.svg')
 
@@ -56,9 +58,8 @@ def fig_1_1():
 def fig_layers():
     sc = Scene()
     plate(sc, 0, OT); plate(sc, 1, GW); plate(sc, 2, IT)
-    put(sc, esp32, 0, 15, 15)
-    put(sc, door_switch, 0, 20, 80)
-    put(sc, relay_module, 0, 60, 100)
+    put(sc, esp32, 0, 60, 30)
+    put(sc, tank, 0, 45, 100)
     put(sc, raspberry_pi, 1, 32, 47)
     put(sc, server, 2, 40, 70)
     cloud(sc, *at(2, 100, 40)[:2], 50)
@@ -97,9 +98,8 @@ def fig_1_2():
         if icon:
             icon(tmp, *spots[icon])
         else:
-            door_switch(tmp, 15, 40)
-            tank(tmp, 60, 50)
-            relay_module(tmp, 75, 15)
+            tank(tmp, 40, 60)
+            relay_module(tmp, 70, 20)
         for dep, svg in tmp.items:
             sc.add(k * 1000 + dep, f'<g transform="translate(0,{-z})">{svg}</g>')
         sc.pts += [(px, py - z) for px, py in tmp.pts]

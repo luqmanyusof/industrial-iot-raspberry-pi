@@ -40,7 +40,7 @@ A Raspberry Pi is a **single-board computer (SBC)**: a full computer on one boar
 
 **Figure 1.1 — The system you build this week**
 
-![The system you build this week: ESP32 field device and door switch with relay, the Raspberry Pi gateway, and operators and servers](images/day1-fig-1-1-system.svg)
+![The system you build this week: the ESP32 field device in the plant, the Raspberry Pi gateway with the door-switch jumper and pump relay on its GPIO, and operators and servers](images/day1-fig-1-1-system.svg)
 
 ### 1.3 — IoT architecture: device → edge → server
 
