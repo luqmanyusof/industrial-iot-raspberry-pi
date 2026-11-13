@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 530" width="980" height="530" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+<rect x="0" y="0" width="980" height="530" rx="12" fill="#ffffff"/>
+<text x="30" y="40" font-size="20" font-weight="700" fill="#202124">PS-01 wiring — GPIO header seen from above (pins 1–20)</text>
+<text x="30" y="62" font-size="13" fill="#5f6368">Run <tspan font-family="monospace">pinout</tspan> on your Pi to check the header. Wire with the Pi powered off.</text>
+<path d="M250,252 V150" stroke="#d93025" fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M342,252 V150" stroke="#333333" fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M526,294 V430 H80 V150" stroke="#8e24aa" fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M434,294 V350 Q434,362 446,362 H468 Q480,362 480,350 V294" stroke="#1a73e8" fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M572,294 V372 H740" stroke="#188038" fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M572,252 V180 H740" stroke="#e8710a" fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="40" y="82" width="340" height="68" rx="8" fill="#f3e8fd" stroke="#8e24aa" stroke-width="2"/>
+<text x="210" y="106" font-size="15" font-weight="700" fill="#202124" text-anchor="middle">Single-channel relay module</text>
+<text x="210" y="124" font-size="12" fill="#5f6368" text-anchor="middle">COM · NO · NC: nothing connected today</text>
+<rect x="73" y="143" width="14" height="14" fill="#ffffff" stroke="#202124" stroke-width="1.5"/>
+<text x="80" y="140" font-size="12" font-weight="700" fill="#202124" text-anchor="middle">IN</text>
+<rect x="243" y="143" width="14" height="14" fill="#ffffff" stroke="#202124" stroke-width="1.5"/>
+<text x="250" y="140" font-size="12" font-weight="700" fill="#202124" text-anchor="middle">VCC</text>
+<rect x="335" y="143" width="14" height="14" fill="#ffffff" stroke="#202124" stroke-width="1.5"/>
+<text x="342" y="140" font-size="12" font-weight="700" fill="#202124" text-anchor="middle">GND</text>
+<rect x="224" y="230" width="466" height="86" rx="6" fill="#2b2b2b"/>
+<text x="704" y="257" font-size="12" fill="#5f6368">board edge</text>
+<text x="704" y="299" font-size="12" fill="#5f6368">inner row</text>
+<circle cx="250" cy="252" r="13" fill="#d93025"/>
+<text x="250" y="256" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+<text x="250" y="222" font-size="11" font-weight="700" fill="#d93025" text-anchor="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke">5V</text>
+<rect x="237" y="281" width="26" height="26" rx="3" fill="#cfcfcf"/>
+<text x="250" y="298" font-size="11" font-weight="700" fill="#555555" text-anchor="middle">1</text>
+<text x="250" y="334" font-size="11" font-weight="400" fill="#80868b" text-anchor="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke">3V3</text>
+<circle cx="296" cy="252" r="13" fill="#f6c7c3"/>
+<text x="296" y="256" font-size="11" font-weight="700" fill="#7a1d14" text-anchor="middle">4</text>
+<text x="296" y="222" font-size="11" font-weight="700" fill="#d93025" text-anchor="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke">5V</text>
+<circle cx="296" cy="294" r="13" fill="#cfcfcf"/>
+<text x="296" y="298" font-size="11" font-weight="700" fill="#555555" text-anchor="middle">3</text>
+<text x="296" y="334" font-size="11" font-weight="400" fill="#80868b" text-anchor="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke">GPIO2</text>
+<circle cx="342" cy="252" r="13" fill="#333333"/>
+<text x="342" y="256" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">6</text>
+<text x="342" y="222" font-size="11" font-weight="700" fill="#202124" text-anchor="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke">GND</text>
+<circle cx="342" cy="294" r="13" fill="#cfcfcf"/>
+<text x="342" y="298" font-size="11" font-weight="700" fill="#555555" text-anchor="middle">5</text>
+<text x="342" y="334" font-size="11" font-weight="400" fill="#80868b" text-anchor="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke">GPIO3</text>
+<circle cx="388" cy="252" r="13" fill="#cfcfcf"/>
+<text x="388" y="256" font-size="11" font-weight="700" fill="#555555" text-anchor="middle">8</text>
+<text x="388" y="222" font-size="11" font-weight="400" fill="#80868b" text-anchor="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke">GPIO14</text>
+<circle cx="388" cy="294" r="13" fill="#cfcfcf"/>
+<text x="388" y="298" font-size="11" font-weight="700" fill="#555555" text-anchor="middle">7</text>
+<text x="388" y="334" font-size="11" font-weight="400" fill="#80868b" text-anchor="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke">GPIO4</text>
+<circle cx="434" cy="252" r="13" fill="#cfcfcf"/>
+<text x="434" y="256" font-size="11" font-weight="700" fill="#555555" text-anchor="middle">10</text>
+<text x="434" y="222" font-size="11" font-weight="400" fill="#80868b" text-anchor="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke">GPIO15</text>
+<circle cx="434" cy="294" r="13" fill="#333333"/>
+<text x="434" y="298" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">9</text>
+<text x="434" y="334" font-size="11" font-weight="700" fill="#202124" text-anchor="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke">GND</text>
+<circle cx="480" cy="252" r="13" fill="#cfcfcf"/>
+<text x="480" y="256" font-size="11" font-weight="700" fill="#555555" text-anchor="middle">12</text>
+<text x="480" y="222" font-size="11" font-weight="400" fill="#80868b" text-anchor="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke">GPIO18</text>
+<circle cx="480" cy="294" r="13" fill="#1a73e8"/>
+<text x="480" y="298" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">11</text>
+<text x="480" y="334" font-size="11" font-weight="700" fill="#1a73e8" text-anchor="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke">GPIO17</text>
+<circle cx="526" cy="252" r="13" fill="#333333"/>
+<text x="526" y="256" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">14</text>
+<text x="526" y="222" font-size="11" font-weight="700" fill="#202124" text-anchor="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke">GND</text>
+<circle cx="526" cy="294" r="13" fill="#8e24aa"/>
+<text x="526" y="298" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">13</text>
+<text x="526" y="334" font-size="11" font-weight="700" fill="#8e24aa" text-anchor="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke">GPIO27</text>
+<circle cx="572" cy="252" r="13" fill="#e8710a"/>
+<text x="572" y="256" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">16</text>
+<text x="572" y="222" font-size="11" font-weight="700" fill="#e8710a" text-anchor="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke">GPIO23</text>
+<circle cx="572" cy="294" r="13" fill="#188038"/>
+<text x="572" y="298" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">15</text>
+<text x="572" y="334" font-size="11" font-weight="700" fill="#188038" text-anchor="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke">GPIO22</text>
+<circle cx="618" cy="252" r="13" fill="#cfcfcf"/>
+<text x="618" y="256" font-size="11" font-weight="700" fill="#555555" text-anchor="middle">18</text>
+<text x="618" y="222" font-size="11" font-weight="400" fill="#80868b" text-anchor="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke">GPIO24</text>
+<circle cx="618" cy="294" r="13" fill="#cfcfcf"/>
+<text x="618" y="298" font-size="11" font-weight="700" fill="#555555" text-anchor="middle">17</text>
+<text x="618" y="334" font-size="11" font-weight="400" fill="#80868b" text-anchor="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke">3V3</text>
+<circle cx="664" cy="252" r="13" fill="#333333"/>
+<text x="664" y="256" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">20</text>
+<text x="664" y="222" font-size="11" font-weight="700" fill="#202124" text-anchor="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke">GND</text>
+<circle cx="664" cy="294" r="13" fill="#cfcfcf"/>
+<text x="664" y="298" font-size="11" font-weight="700" fill="#555555" text-anchor="middle">19</text>
+<text x="664" y="334" font-size="11" font-weight="400" fill="#80868b" text-anchor="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke">GPIO10</text>
+<circle cx="526" cy="252" r="18" fill="none" stroke="#188038" stroke-width="2.5" stroke-dasharray="5 3"/>
+<circle cx="664" cy="252" r="18" fill="none" stroke="#e8710a" stroke-width="2.5" stroke-dasharray="5 3"/>
+<circle cx="748" cy="180" r="7" fill="#ffffff" stroke="#e8710a" stroke-width="3"/>
+<text x="764" y="178" font-size="13" font-weight="700" fill="#e8710a">STOP: touch this free end</text>
+<text x="764" y="195" font-size="12" fill="#3c4043">to pin 20 (GND), then let go</text>
+<circle cx="748" cy="372" r="7" fill="#ffffff" stroke="#188038" stroke-width="3"/>
+<text x="764" y="370" font-size="13" font-weight="700" fill="#188038">START: touch this free end</text>
+<text x="764" y="387" font-size="12" fill="#3c4043">to pin 14 (GND), then let go</text>
+<text x="445" y="384" font-size="13" font-weight="700" fill="#1a73e8" text-anchor="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke">Door switch</text>
+<text x="445" y="400" font-size="12" fill="#3c4043" text-anchor="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke">jumper in place = closed</text>
+<text x="96" y="420" font-size="12" font-weight="700" fill="#8e24aa" stroke="#ffffff" stroke-width="4" paint-order="stroke">GPIO27 (pin 13) → relay IN</text>
+<rect x="30" y="456" width="920" height="52" rx="8" fill="#fce8e6" stroke="#d93025" stroke-width="1.5"/>
+<text x="48" y="478" font-size="14" font-weight="700" fill="#a50e0e">Inputs go to GND only. Never connect a GPIO pin to 5 V (pins 2 and 4): GPIO works at 3.3 V.</text>
+<text x="48" y="497" font-size="13" fill="#a50e0e">Pin 2 (5 V) is only for the relay module’s VCC. No mains voltage in this lab.</text>
+</svg>

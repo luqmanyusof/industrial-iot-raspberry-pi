@@ -47,15 +47,40 @@ A Raspberry Pi is a **single-board computer (SBC)**: a full computer on one boar
 
 > **The rule of thumb:** a microcontroller is close to the machine and reacts fast. A single-board computer sits above several machines and thinks: it collects, decides and communicates. In this course the ESP32 plays the field device and the Pi plays the gateway.
 
+**Figure 1.1 — The system you build this week**
+
+```mermaid
+flowchart LR
+    subgraph plant["Stesen Pam PS-01"]
+        esp["ESP32 field device<br/>tank level, e-stop,<br/>stack light, alarm"]
+        io["Door switch and<br/>pump relay"]
+    end
+    gwy["Raspberry Pi<br/>edge gateway"]
+    up["Operators and servers<br/>dashboards, history"]
+    esp -- "Modbus TCP (Day 2)" --> gwy
+    io -- "GPIO (Day 1)" --> gwy
+    gwy -- "HTTP today,<br/>MQTT on Day 2" --> up
+    up -. "commands" .-> gwy
+    gwy -. "switch pump" .-> io
+    class gwy pi
+    classDef pi fill:#fff3cd,stroke:#b8860b,color:#000
+```
+
 ### 1.3 — IoT architecture: device → edge → server
 
 An **IoT** (Internet of Things) system moves data in three layers:
 
-```
-[ Devices ]  →  [ Edge gateway ]  →  [ Server / cloud ]
- sensors,        collects, filters,     stores history,
- switches,       secures and            dashboards, reports,
- actuators       forwards data          analytics
+```mermaid
+flowchart LR
+    dev["Devices<br/>sensors, switches,<br/>actuators"]
+    edge["Edge gateway<br/>collects, filters,<br/>secures, forwards"]
+    srv["Server / cloud<br/>history, dashboards,<br/>reports, analytics"]
+    dev -- "raw signals" --> edge
+    edge -- "clean, secured data" --> srv
+    srv -. "commands" .-> edge
+    edge -. "commands" .-> dev
+    class edge pi
+    classDef pi fill:#fff3cd,stroke:#b8860b,color:#000
 ```
 
 The **edge** is where the plant meets the network. Doing work at the edge, instead of sending every raw reading to a server, means the site keeps working when the network link is down, uses less bandwidth, and reacts faster.
@@ -73,6 +98,28 @@ Industry describes the same layers with the **Purdue model** (also used in the I
 | 0 | Field | Sensors, switches, valves, motors, relays |
 
 An **IIoT** (Industrial IoT) edge gateway usually sits between Level 1 and Level 2: it talks to field devices and controllers below, and to supervisory and site systems above. That is exactly where your Pi will sit.
+
+**Figure 1.2 — Purdue levels, and where the gateway sits**
+
+```mermaid
+flowchart TB
+    L4["Level 4 — Enterprise<br/>ERP, email, business systems"]
+    L3["Level 3 — Site operations<br/>historian, production reports"]
+    L2["Level 2 — Supervisory<br/>SCADA, HMI screens"]
+    GW["IIoT edge gateway<br/>your Raspberry Pi"]
+    L1["Level 1 — Control<br/>PLCs, controllers"]
+    L0["Level 0 — Field<br/>sensors, switches, valves, motors, relays"]
+    L4 <--> L3
+    L3 <--> L2
+    L2 <--> GW
+    GW <--> L1
+    L1 <--> L0
+    GW <-. "simple I/O,<br/>wired directly" .-> L0
+    class GW pi
+    classDef pi fill:#fff3cd,stroke:#b8860b,color:#000
+```
+
+Each arrow is a boundary where traffic can be checked and controlled.
 
 > **Why the levels matter:** each level is a security boundary. Traffic should only pass between neighbouring levels, through controlled points. On Day 2 you will secure the link above your gateway.
 
@@ -92,6 +139,16 @@ An **IIoT** (Industrial IoT) edge gateway usually sits between Level 1 and Level
 **Open:** Raspberry Pi Imager on your laptop.
 
 ### 2.1 — Write the OS to the microSD card
+
+**Figure 2.1 — Headless setup: everything is decided before the first boot**
+
+```mermaid
+flowchart LR
+    A["Laptop<br/>Raspberry Pi Imager"] -- "writes OS +<br/>your settings" --> B["microSD card<br/>hostname, user,<br/>Wi-Fi, SSH on"]
+    B -- "insert,<br/>power on" --> C["First boot<br/>applies the settings<br/>(about 90 s)"]
+    C --> D["Joins the<br/>lab Wi-Fi"]
+    D --> E["Reachable as<br/>pi01.local"]
+```
 
 1. Insert the microSD card into your laptop (use the adapter if needed).
 2. Open **Raspberry Pi Imager**.
@@ -139,6 +196,28 @@ An **IIoT** (Industrial IoT) edge gateway usually sits between Level 1 and Level
 
 From now on, you edit files in VS Code on your laptop, and they are saved on the Pi.
 
+**Figure 2.2 — Two ways in, one encrypted door**
+
+```mermaid
+flowchart LR
+    subgraph laptop["Your laptop"]
+        term["Terminal /<br/>PowerShell"]
+        vsc["VS Code<br/>+ Remote-SSH"]
+    end
+    subgraph pi["Raspberry Pi (pi01)"]
+        sshd["SSH server<br/>port 22"]
+        shell["Shell as<br/>pelatih"]
+        vss["VS Code Server<br/>~/.vscode-server"]
+        files["Your files<br/>~/iiot"]
+    end
+    term -- "ssh, encrypted" --> sshd
+    vsc -- "SSH, encrypted" --> sshd
+    sshd --> shell
+    sshd --> vss
+    shell --> files
+    vss --> files
+```
+
 ### 2.4 — Linux essentials
 
 Run each command in the terminal and look at the result.
@@ -166,6 +245,25 @@ Run each command in the terminal and look at the result.
    mkdir -p ~/iiot/data
    cd ~/iiot
    ```
+
+**Figure 2.3 — Where everything lives by the end of today (green: yours; red: system files, need sudo)**
+
+```mermaid
+flowchart LR
+    root["/"] --> home["/home/pelatih<br/>your home, ~"]
+    root --> etc["/etc<br/>system settings"]
+    home --> iiot["~/iiot<br/>course folder"]
+    home --> keys["~/.ssh/authorized_keys<br/>your public key (Topic 4)"]
+    iiot --> venv[".venv/<br/>Python and packages (Topic 3)"]
+    iiot --> code["your programs<br/>sim_sensor.py, gateway.py,<br/>pump_control.py ..."]
+    iiot --> data["data/<br/>ps01.jsonl, ps01.db"]
+    etc --> sysd["/etc/systemd/system/<br/>sim-sensor.service,<br/>gateway.service"]
+    etc --> sshcfg["/etc/ssh/sshd_config.d/<br/>10-hardening.conf (Topic 4)"]
+    classDef yours fill:#e6f4ea,stroke:#188038,color:#000
+    classDef sys fill:#fce8e6,stroke:#c5221f,color:#000
+    class home,iiot,keys,venv,code,data yours
+    class etc,sysd,sshcfg sys
+```
 
 > **`sudo` is a loaded gun.** Use it only when a command needs system rights (installing software, editing system files, managing services). Never run your own Python programs with `sudo`.
 
@@ -226,6 +324,23 @@ In the `ss` output, find port **22**. That is SSH, waiting for connections.
 ### 3.2 — A virtual environment for your project
 
 Raspberry Pi OS protects its own Python. A plain `pip install` fails with `error: externally-managed-environment`. Instead, each project gets its own **virtual environment (venv)**: a private folder of Python packages.
+
+**Figure 3.1 — System Python and your venv**
+
+```mermaid
+flowchart LR
+    subgraph venv["~/iiot/.venv: yours, managed by pip"]
+        vpy[".venv/bin/python"]
+        pip["pip packages<br/>requests, pymodbus,<br/>paho-mqtt"]
+    end
+    subgraph os["Raspberry Pi OS: managed by apt"]
+        py["System Python 3"]
+        apt["apt packages<br/>python3-gpiozero,<br/>python3-lgpio"]
+    end
+    vpy -- "uses" --> pip
+    vpy -- "built from" --> py
+    vpy -. "can also see<br/>(--system-site-packages)" .-> apt
+```
 
 1. Install the GPIO libraries from Raspberry Pi OS (needed in Topic 6):
    ```bash
@@ -352,6 +467,20 @@ if __name__ == "__main__":
 | `ts` in UTC | Timestamps in UTC (Coordinated Universal Time), so data from different sites lines up |
 | `logging` | Timestamped messages with a level (INFO, WARNING), instead of plain `print` |
 
+**Figure 3.2 — One pass of the simulator loop**
+
+```mermaid
+flowchart TD
+    s(["Start: make data folder,<br/>level = 60"]) --> lvl["Take a UTC timestamp,<br/>move tank level a little<br/>(kept between 0 and 100)"]
+    lvl --> temp{"Read pump<br/>temperature"}
+    temp -- "OK" --> ok["pump_temp_c = value<br/>status = OK"]
+    temp -- "IOError<br/>(about 2%)" --> fault["pump_temp_c = None<br/>status = SENSOR_FAULT<br/>log a WARNING"]
+    ok --> write["Append one JSON line<br/>to data/ps01.jsonl"]
+    fault --> write
+    write --> wait["Wait 2 seconds"]
+    wait --> lvl
+```
+
 2. Run it:
    ```bash
    python sim_sensor.py
@@ -412,6 +541,19 @@ if __name__ == "__main__":
 
 2. Run it: `python summarise.py`
 
+**Figure 3.3 — How the shift report copes with a damaged line**
+
+```mermaid
+flowchart TD
+    o(["Open data/ps01.jsonl"]) --> more{"Another<br/>line?"}
+    more -- "yes" --> parse{"json.loads(line)"}
+    parse -- "OK" --> keep["Keep the tank level,<br/>count a fault if<br/>status is not OK"]
+    parse -- "JSONDecodeError" --> skip["Count as damaged,<br/>print it, skip it"]
+    keep -- "next line" --> more
+    skip -- "next line" --> more
+    more -- "no, end of file" ----> rep["Print the report:<br/>readings, min / max / avg,<br/>faults, damaged lines"]
+```
+
 **Try it**
 1. **Break it on purpose.** Simulate a power cut in the middle of a write, which leaves half a line in the file:
    ```bash
@@ -458,6 +600,19 @@ A gateway program must start by itself after a power cut and restart itself afte
 | `PYTHONUNBUFFERED=1` | Log lines appear in the journal immediately |
 | `WantedBy=multi-user.target` | Start it at boot, once the system is up |
 
+**Figure 3.4 — What systemd does with your service**
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> Running: boot (enabled) or systemctl start
+    Running --> Waiting: program exits or crashes
+    Waiting --> Running: after RestartSec=3
+    Running --> Stopped: systemctl stop
+    Stopped --> Running: systemctl start
+    state "Waiting 3 s" as Waiting
+```
+
 3. Load, enable and start it:
    ```bash
    sudo systemctl daemon-reload
@@ -488,11 +643,44 @@ A gateway program must start by itself after a power cut and restart itself afte
 
 **Open:** a terminal on your **laptop** and a VS Code terminal on the Pi. Keep both open for the whole topic.
 
+**Figure 4.1 — The checks an incoming connection must pass after this topic**
+
+```mermaid
+flowchart TD
+    pkt(["Connection arrives<br/>from the network"]) --> fw{"ufw: is this port allowed?<br/>22 (rate-limited), 5353"}
+    fw -- "no" --> drop["Dropped silently"]
+    fw -- "yes" --> listen{"Is a program listening?<br/>(ss -tulpn)"}
+    listen -- "no" --> refused["Connection refused"]
+    listen -- "yes, port 22" --> key{"sshd: a valid key?<br/>passwords and root login are off"}
+    key -- "no" --> denied["Permission denied<br/>(publickey)"]
+    key -- "yes" --> user["Logged in as pelatih<br/>sudo needed for system changes"]
+    classDef bad fill:#fce8e6,stroke:#c5221f,color:#000
+    classDef good fill:#e6f4ea,stroke:#188038,color:#000
+    class drop,refused,denied bad
+    class user good
+```
+
 > **Never lock yourself out:** keep your current session open while you change SSH or the firewall. Test the change from a **second, new** connection. If the new one fails, fix it from the old one.
 
 ### 4.1 — Log in with a key instead of a password
 
 A **key pair** is two matching files: a private key that never leaves your laptop, and a public key you copy to the Pi. A stolen or guessed password is no longer enough.
+
+**Figure 4.2 — How key login works**
+
+```mermaid
+sequenceDiagram
+    participant L as Laptop (private key)
+    participant P as Pi (authorized_keys)
+    Note over L,P: Once: copy the PUBLIC key into ~/.ssh/authorized_keys
+    L->>P: pelatih wants to log in with this public key
+    P-->>L: That key is in authorized_keys. Prove it is yours.
+    L->>L: Passphrase unlocks the private key, sign this session
+    L->>P: Signature
+    P->>P: Check the signature with the public key
+    P-->>L: Logged in
+    Note over L,P: The private key never leaves the laptop
+```
 
 1. On your **laptop**, create a key pair (press **Enter** to accept the default file, and set a passphrase):
    ```bash
@@ -590,9 +778,22 @@ A **key pair** is two matching files: a private key that never leaves your lapto
 
 ### 5.1 — The four new ideas
 
-```
-              every 2 s                     store first,            then forward
-[ sensor thread ] ──► [ queue ] ──► [ store thread ] ──► SQLite ──► HTTP POST ──► neighbour's Pi
+```mermaid
+flowchart TB
+    main["MainThread<br/>starts the threads,<br/>handles SIGTERM and Ctrl+C"]
+    ev(("stop<br/>Event"))
+    sensor["sensor thread<br/>read() every 2 s"]
+    q[["queue<br/>readings waiting"]]
+    store["store thread<br/>save, then forward"]
+    db[("data/ps01.db<br/>SQLite")]
+    nb["Neighbour's<br/>receiver.py :8080"]
+    main -. "set()" .-> ev
+    ev -. "checked by" .-> sensor
+    ev -. "checked by" .-> store
+    sensor -- "put" --> q
+    q -- "get" --> store
+    store -- "1. INSERT + commit" --> db
+    store -- "2. HTTP POST,<br/>timeout 2 s" --> nb
 ```
 
 | Idea | What it gives the gateway |
@@ -603,6 +804,14 @@ A **key pair** is two matching files: a private key that never leaves your lapto
 | **SQLite** | A real database in a single file. Unlike a text file, a reading is either fully saved or not saved at all, and you can query it with SQL (Structured Query Language). |
 
 ### 5.2 — The receiver (your neighbour's end)
+
+**Figure 5.1 — The pair lab: each gateway forwards to the other Pi**
+
+```mermaid
+flowchart LR
+    g1["pi01<br/>gateway.py"] -- "POST /readings" --> r2["pi02<br/>receiver.py, port 8080<br/>open in ufw"]
+    g2["pi02<br/>gateway.py"] -- "POST /readings" --> r1["pi01<br/>receiver.py, port 8080<br/>open in ufw"]
+```
 
 1. Create `~/iiot/receiver.py` (or copy `code/day1/receiver.py`):
 
@@ -800,6 +1009,33 @@ if __name__ == "__main__":
 | `timeout=2` on the POST | Without a timeout, one dead connection can hang the store thread forever |
 | Store first, then forward | A reading is safe on disk before the network is even tried |
 
+**Figure 5.2 — The life of one reading, and the three things the network can do**
+
+```mermaid
+sequenceDiagram
+    participant S as sensor thread
+    participant Q as queue
+    participant T as store thread
+    participant D as ps01.db
+    participant N as neighbour's receiver
+    S->>Q: put(reading)
+    Note over S: reads again in 2 s,<br/>whatever happens next
+    Q->>T: get()
+    T->>D: INSERT + commit
+    Note over T,D: the reading is safe on disk
+    T->>N: POST /readings (timeout 2 s)
+    alt receiver running
+        N-->>T: 204 No Content
+        T->>T: log "Stored and forwarded"
+    else receiver stopped
+        N--xT: ConnectionError, at once
+        T->>T: log "forward failed"
+    else port closed by the firewall
+        Note over T,N: no reply: waits the full 2 s,<br/>the queue grows meanwhile
+        T->>T: log "forward failed"
+    end
+```
+
 ### 5.4 — Query the database
 
 ```bash
@@ -850,6 +1086,23 @@ The gateway replaces the Topic 3 simulator.
    ```
    The journal ends with `Gateway stopped cleanly`.
 
+**Figure 5.3 — A clean stop**
+
+```mermaid
+sequenceDiagram
+    participant SD as systemd
+    participant M as MainThread
+    participant S as sensor thread
+    participant T as store thread
+    SD->>M: SIGTERM (systemctl stop)
+    M->>M: stop.set()
+    S->>S: stop.wait() wakes, loop ends
+    T->>T: finishes the current reading, db.close()
+    M->>M: join() waits for both threads
+    M-->>SD: exits: "Gateway stopped cleanly"
+    Note over SD,T: Without the handler, SIGTERM ends Python at once, wherever it is
+```
+
 **Checkpoint ✅** `gateway` runs as a service, your neighbour's receiver shows your readings, and when forwarding fails the readings still land in `ps01.db`.
 
 ---
@@ -874,6 +1127,10 @@ The gateway replaces the Topic 3 simulator.
 | Relay VCC | 5 V | 2 | Relay module **VCC** |
 | Relay GND | GND | 6 | Relay module **GND** |
 
+**Figure 6.1 — Wiring for the whole topic**
+
+![Wiring: door switch on pins 11 and 9, START on pin 15, STOP on pin 16, relay IN on pin 13, VCC on pin 2, GND on pin 6](images/day1-gpio-wiring.svg)
+
 > **Three rules for the header:**
 > 1. **Inputs go to GND only. Never connect a GPIO pin to 5 V** (pins 2 and 4). GPIO pins work at 3.3 V and are damaged by 5 V.
 > 2. **Wire with the power off.** Shut down with `sudo poweroff`, wait for the green light to stop, then unplug.
@@ -882,6 +1139,25 @@ The gateway replaces the Topic 3 simulator.
 ### 6.2 — Digital input: the door switch
 
 A GPIO input reads **high** (3.3 V) or **low** (0 V). With the Pi's internal **pull-up** resistor switched on, an unconnected pin reads high. Connecting it to GND pulls it low.
+
+**Figure 6.2 — The door switch circuit**
+
+```mermaid
+flowchart LR
+    v["3.3 V"] --- r["internal<br/>pull-up resistor"] --- pin["GPIO17<br/>pin 11"] --- j["jumper<br/>(the door)"] --- g["GND<br/>pin 9"]
+```
+
+**Figure 6.3 — What the program sees**
+
+```mermaid
+flowchart LR
+    j1["Jumper in place"] --> l1["pin pulled<br/>to 0 V (low)"] --> p1["is_pressed<br/>= True"] --> c1["Door CLOSED"]
+    j2["Jumper out,<br/>or a broken wire"] --> l2["pull-up holds<br/>pin at 3.3 V (high)"] --> p2["is_pressed<br/>= False"] --> c2["Door OPEN:<br/>pump must stop"]
+    classDef good fill:#e6f4ea,stroke:#188038,color:#000
+    classDef bad fill:#fce8e6,stroke:#c5221f,color:#000
+    class c1 good
+    class c2 bad
+```
 
 1. Shut down, connect a jumper from **pin 11** to **pin 9**, and power up. Jumper in place = door closed.
 2. Create `~/iiot/door_switch.py` (or copy `code/day1/door_switch.py`):
@@ -915,6 +1191,21 @@ pause()
 ### 6.3 — Digital output: the pump relay
 
 A relay is a switch worked by an electromagnet. The Pi's 3.3 V pin cannot drive the electromagnet directly; the relay **module** has the extra electronics to do it.
+
+**Figure 6.4 — Inside the relay module**
+
+```mermaid
+flowchart TB
+    gpio["Pi GPIO27, pin 13<br/>3.3 V logic"] --> drv
+    subgraph mod["Relay module"]
+        drv["IN → driver<br/>transistor or optocoupler"]
+        vcc["VCC: 5 V from pin 2"] --> coil["relay coil<br/>(electromagnet)"]
+        drv -- "lets current<br/>flow through" --> coil
+        drv --> led["module LED"]
+        coil -- "pulls" --> con["contacts<br/>COM · NO · NC"]
+    end
+    con --> load["Load circuit<br/>nothing connected today"]
+```
 
 1. Shut down. Connect the relay module: **VCC → pin 2**, **GND → pin 6**, **IN → pin 13**. Power up.
 2. Create `~/iiot/relay_test.py` (or copy `code/day1/relay_test.py`):
@@ -952,6 +1243,22 @@ for _ in range(3):
 ### 6.4 — The interlock
 
 Now put it together. The pump may only run when someone presses START **and** the door is closed. STOP or an opening door switches it off at once. STOP always wins.
+
+**Figure 6.5 — The interlock: how the pump gets to ON, and every way back to OFF**
+
+```mermaid
+flowchart TB
+    st(["Program starts<br/>initial_value=False"]) --> OFF(["Pump OFF"])
+    OFF -- "START, with the door closed<br/>and STOP not held" --> ON(["Pump ON"])
+    ON -- "STOP, door opened,<br/>or the program stops" --> OFF2(["Pump OFF"])
+    OFF2 -. "a person must<br/>press START again" .-> OFF
+    OFF -. "START with the door open<br/>or STOP held" .-> ref["Refused:<br/>stays OFF"]
+    OFF2 -. "door closes" .-> stay["No auto restart:<br/>stays OFF"]
+    classDef on fill:#e6f4ea,stroke:#188038,color:#000
+    classDef off fill:#fce8e6,stroke:#c5221f,color:#000
+    class ON on
+    class OFF,OFF2 off
+```
 
 1. Shut down and add two jumpers for the buttons: one on **pin 15** (START) and one on **pin 16** (STOP), with their other ends free. Touch a free end briefly onto a GND pin (14 for START, 20 for STOP) to "press" it. Power up.
 2. Create `~/iiot/pump_control.py` (or copy `code/day1/pump_control.py`). Use the `RELAY_ACTIVE_HIGH` value you found in 6.3:
@@ -1039,6 +1346,21 @@ finally:
 1. **Kill it the hard way.** Start the pump, then from a second terminal: `pkill -9 -f pump_control.py`. `-9` gives the program no chance to run its `finally` block. **Watch the relay** and write down what it did. Whatever happened was decided by the relay module's hardware, not by your code.
 2. **Power cut.** Start the pump, then pull the Pi's power. The relay must drop out, because the module loses its supply.
 3. **Put everything back:** power up, run `pump_control.py` again, and confirm the pump starts OFF.
+
+**Figure 6.6 — Who decides the relay state when things go wrong**
+
+```mermaid
+flowchart LR
+    e1["Ctrl+C or<br/>SIGTERM"] --> s1["finally: pump.off()<br/>your code decides"] --> r1["Pump OFF"]
+    e2["kill -9"] --> s2["no clean-up runs,<br/>the pin is released"] --> r2["GPIO chip and relay<br/>module decide:<br/>observe it"]
+    e3["Power cut"] --> s3["module loses its<br/>5 V supply"] --> r3["Relay drops out:<br/>pump OFF"]
+    classDef sw fill:#e6f4ea,stroke:#188038,color:#000
+    classDef unk fill:#fef7e0,stroke:#e37400,color:#000
+    classDef hw fill:#e8f0fe,stroke:#1967d2,color:#000
+    class s1,r1 sw
+    class s2,r2 unk
+    class s3,r3 hw
+```
 
 > **Later, in production:** never rely on software alone for safety. Real plants put a hardware interlock (the door switch wired in series with the contactor coil) and a watchdog in front of the program, so a crash or a frozen Pi always ends with the pump off.
 
