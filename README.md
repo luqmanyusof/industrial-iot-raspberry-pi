@@ -6,12 +6,12 @@ You will set up a Raspberry Pi as the **edge gateway** of a small water pump sta
 
 **The flow:** Raspberry Pi + Python → hardened gateway → door switch, relay and interlock → Modbus field device → MQTT + Node-RED → edge node with local AI
 
-**Acronyms used throughout:** **IoT** = Internet of Things · **IIoT** = Industrial IoT · **SBC** = Single-Board Computer · **MCU** = Microcontroller Unit · **OS** = Operating System · **SSH** = Secure Shell · **SQL** = Structured Query Language · **HTTP** = Hypertext Transfer Protocol · **GPIO** = General-Purpose Input/Output · **PLC** = Programmable Logic Controller · **SCADA** = Supervisory Control and Data Acquisition · **HMI** = Human-Machine Interface · **MQTT** = Message Queuing Telemetry Transport · **JSON** = JavaScript Object Notation · **TLS** = Transport Layer Security · **IT / OT** = Information / Operational Technology · **ADC** = Analog-to-Digital Converter · **FC** = (Modbus) Function Code · **QoS** = Quality of Service · **ACL** = Access Control List · **CA** = Certificate Authority
+**Acronyms used throughout:** **IoT** = Internet of Things · **IIoT** = Industrial IoT · **SBC** = Single-Board Computer · **MCU** = Microcontroller Unit · **OS** = Operating System · **SSH** = Secure Shell · **SQL** = Structured Query Language · **HTTP** = Hypertext Transfer Protocol · **GPIO** = General-Purpose Input/Output · **PLC** = Programmable Logic Controller · **SCADA** = Supervisory Control and Data Acquisition · **HMI** = Human-Machine Interface · **MQTT** = Message Queuing Telemetry Transport · **JSON** = JavaScript Object Notation · **TLS** = Transport Layer Security · **IT / OT** = Information / Operational Technology · **ADC** = Analog-to-Digital Converter · **FC** = (Modbus) Function Code · **QoS** = Quality of Service · **ACL** = Access Control List
 
 ## The 3 days
 
 - **[Day 1 — Raspberry Pi and Python](day1.md)**: where the Pi sits in an industrial system, setting it up headless and hardening it, a threaded gateway that reads, stores and forwards, and a door switch and pump relay with a fail-safe interlock.
-- **[Day 2 — Interfacing with the Physical World](day2.md)**: how field devices connect, polling the PS-01 plant over Modbus, a level alarm, MQTT secured with logins, ACLs and TLS, and a Node-RED operator dashboard whose commands must obey the local interlock.
+- **[Day 2 — Interfacing with the Physical World](day2.md)**: how field devices connect, polling the PS-01 plant over Modbus, a level alarm, MQTT secured with logins and ACLs, and a Node-RED operator dashboard whose commands must obey the local interlock.
 - **Day 3 — Building a Smart Project** *(draft pending)*: an edge node that polls equipment, detects anomalies locally, survives network loss and shows everything on a dashboard.
 
 ## How to read this
@@ -80,6 +80,6 @@ industrial-iot-raspberry-pi/
 │       ├── mqtt_link.py         # MQTT settings from ~/iiot/mqtt.json (Topic 10)
 │       ├── gateway_mqtt.py      # gateway publishing over MQTT (Topic 10)
 │       ├── pump_control_mqtt.py # remote START/STOP, local interlock (Topic 10)
-│       ├── mosquitto/           # broker settings, ACL and mqtt.json templates (Topic 11)
+│       ├── mosquitto/           # broker settings, ACL and mqtt.json template (Topic 11)
 │       └── ps01-dashboard-flow.json  # Node-RED Dashboard 2.0 flow (Topic 12)
 ```

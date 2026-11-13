@@ -633,7 +633,7 @@ Design topics before writing code; changing them later breaks every subscriber (
 
 ### 10.4 — The gateway publishes over MQTT
 
-All MQTT settings live in one small module, `mqtt_link.py`, which reads `~/iiot/mqtt.json`. In Topic 11 you secure the broker by changing that file only.
+All MQTT settings live in one small module, `mqtt_link.py`, which reads `~/iiot/mqtt.json`. In Topic 11 you add logins by changing that file only.
 
 1. Copy the files and create the settings file:
    ```bash
@@ -646,7 +646,7 @@ All MQTT settings live in one small module, `mqtt_link.py`, which reads `~/iiot/
 #!/usr/bin/env python3
 """One place for MQTT settings. Every program connects the same way, from ~/iiot/mqtt.json.
 
-Securing the broker (Topic 11) changes only that file, never the programs.
+Adding logins to the broker (Topic 11) changes only that file, never the programs.
 """
 import json
 import logging
@@ -672,8 +672,6 @@ def make_client(role: str, will: tuple[str, str] | None = None,
     login = cfg.get("logins", {}).get(role)
     if login:
         client.username_pw_set(login["username"], login["password"])
-    if cfg.get("ca_file"):
-        client.tls_set(ca_certs=cfg["ca_file"])            # encrypt, and check the broker's certificate
     if will:
         client.will_set(will[0], will[1], qos=1, retain=True)
 
@@ -891,19 +889,23 @@ sequenceDiagram
 
 ## Topic 11 — Securing MQTT
 
-**Goal:** see for yourself that an open broker leaks everything, then close it in two steps: logins with per-user permissions, then encryption with TLS.
+**Goal:** close the open broker: a login for every program, and an **ACL** (Access Control List) that says exactly which topics each one may read or write.
 
 **Open:** two terminals on your Pi.
 
-### 11.1 — Logins and permissions
+### 11.1 — Who may do what
 
-Each program gets its own username, and an **ACL** (Access Control List) says exactly which topics it may read or write.
+Right now any program on your Pi can publish anything, including a fake reading or a `START`. You fix that with one user per program:
 
 | User | Used by | May read | May write |
 |---|---|---|---|
 | `gateway` | `gateway.py` | — | `status`, `telemetry`, `alarm` |
 | `pump` | `pump_control_mqtt.py` | `pump/cmd` | `pump/state` |
 | `dashboard` | Node-RED, and you with `mosquitto_sub` | `ps01/#` | `pump/cmd` |
+
+Each program gets only what its job needs. The dashboard can *ask* for START, but it can never pretend to be the gateway.
+
+### 11.2 — Logins and the access list
 
 1. Create the three users. Each command asks for a password twice; write them down.
    ```bash
@@ -912,17 +914,18 @@ Each program gets its own username, and an **ACL** (Access Control List) says ex
    sudo mosquitto_passwd /etc/mosquitto/passwd dashboard
    ```
    `-c` creates the file: use it for the first user only, or it wipes the others.
-2. Install the access list and step 1 of the broker settings:
+2. Install the access list and the broker settings:
    ```bash
    sudo cp ~/course/code/day2/mosquitto/acl /etc/mosquitto/acl
-   sudo cp ~/course/code/day2/mosquitto/ps01-step1-passwords.conf /etc/mosquitto/conf.d/ps01.conf
+   sudo cp ~/course/code/day2/mosquitto/ps01.conf /etc/mosquitto/conf.d/ps01.conf
    sudo chown mosquitto:mosquitto /etc/mosquitto/passwd /etc/mosquitto/acl
    sudo chmod 600 /etc/mosquitto/passwd /etc/mosquitto/acl
    sudo systemctl restart mosquitto
    ```
 
 ```conf
-# Topic 11, step 1: logins and per-user topic rules. Still plain text, and only on this Pi.
+# Topic 11: a login for every program and per-user topic rules.
+# Listens on this Pi only (127.0.0.1): nothing leaves the Pi, so plain MQTT is acceptable here.
 listener 1883 127.0.0.1
 allow_anonymous false
 password_file /etc/mosquitto/passwd
@@ -951,112 +954,54 @@ topic write ps01/+/pump/cmd
 
 > **Mosquitto will not start?** Run `journalctl -u mosquitto -n 20`. `Unable to open pwfile` means the file is not owned by the `mosquitto` user: the broker reads it *after* dropping its root rights.
 
-3. Give your programs their logins. Copy the template and put in the passwords you chose:
+3. Give your programs their logins. Copy the template, put in the passwords you chose, and keep the file private:
    ```bash
-   cp ~/course/code/day2/mosquitto/mqtt-step1.json ~/iiot/mqtt.json
+   cp ~/course/code/day2/mosquitto/mqtt.json ~/iiot/mqtt.json
    chmod 600 ~/iiot/mqtt.json
    nano ~/iiot/mqtt.json
    ```
-4. Restart the gateway and pump control. Their logs say `MQTT connected to localhost:1883 as gateway` (and `as pump`).
-5. From now on, watch with the dashboard login: `mosquitto_sub -h localhost -t 'ps01/#' -v -u dashboard -P '<dashboard password>'`
 
-### 11.2 — Look at what the network sees
+```json
+{
+  "host": "localhost",
+  "port": 1883,
+  "logins": {
+    "gateway": {"username": "gateway", "password": "GATEWAY-PASSWORD"},
+    "pump": {"username": "pump", "password": "PUMP-PASSWORD"}
+  }
+}
+```
 
-Logins stop strangers. They do not stop someone *watching*.
+4. Restart the gateway and pump control. No program changed, only `mqtt.json`. Their logs now say `MQTT connected to localhost:1883 as gateway` (and `as pump`).
+5. From now on, watch with the dashboard login:
+   ```bash
+   mosquitto_sub -h localhost -t 'ps01/#' -v -u dashboard -P '<dashboard password>'
+   ```
+6. Tidy the firewall: the Day 1 receiver is gone, so close its port.
+   ```bash
+   sudo ufw delete allow in on wlan0 to any port 8080 proto tcp
+   ```
+   The broker listens on `127.0.0.1` only, so it needs no firewall rule at all.
 
-1. In terminal 1, capture the broker's traffic and print it as text:
+**Try it**
+1. **No login.** `mosquitto_sub -h localhost -t 'ps01/#'` → `Connection Refused: not authorised.`
+2. **Wrong password.** Same command with `-u dashboard -P wrong` → refused.
+3. **Wrong permissions.** As `dashboard`, try to fake a reading:
+   ```bash
+   mosquitto_pub -h localhost -u dashboard -P '<dashboard password>' -t ps01/pi01/telemetry -m fake
+   ```
+   It seems to work, but nothing arrives at your subscriber, and `journalctl -u mosquitto -n 5` shows `Denied PUBLISH`. A client is not told it was refused, so it learns nothing about the rules.
+4. **Not from outside.** Ask your neighbour to try your broker over the plant network: `mosquitto_sub -h 192.168.4.11 -t '#' -u dashboard -P x`. It just hangs: your firewall drops it, and behind the firewall nothing listens on that address anyway. Press **Ctrl+C**.
+5. **What a login does not hide.** In terminal 1, watch the broker's traffic on this Pi:
    ```bash
    sudo apt install -y tcpdump
    sudo tcpdump -i lo -A -n port 1883
    ```
-2. In terminal 2, subscribe briefly with the dashboard login, then press **Ctrl+C**.
-3. Scroll back through terminal 1. Your username **and password** are there in plain text, and so is every reading.
+   In terminal 2, subscribe briefly with the dashboard login, then scroll back through terminal 1: the username, the password and every reading are there in plain text.
 
-You captured on `lo` (this Pi talking to itself), so only someone already on your Pi could do this. But the moment a broker listens on a real network, anyone on the path sees the same. On a military network, that is your plant's state and the credentials to command it.
+> **Why plain MQTT is acceptable here, and when it is not.** Your broker only listens on `127.0.0.1`, so the traffic never leaves the Pi: to read it, someone must already be logged in to your Pi with `sudo`, and then they own it anyway. The moment a broker serves other machines (a central server, a SCADA system, a laptop), add **TLS** (Transport Layer Security), normally on port 8883, so the network carries only encrypted bytes and clients can check they reached the real broker.
 
-### 11.3 — Encrypt with TLS
-
-**TLS** (Transport Layer Security, the "S" in HTTPS) encrypts the connection and lets each client check it is talking to the real broker. That check needs a **certificate** for the broker, signed by a **certificate authority (CA)** the clients trust. You will be your own CA.
-
-**Figure 11.1 — Who trusts whom**
-
-```mermaid
-flowchart LR
-    ca["Your lab CA<br/>ca.key (secret) + ca.crt"]
-    bc["Broker certificate<br/>broker.crt + broker.key<br/>names: pi01.local, localhost"]
-    clients["gateway.py, pump_control_mqtt.py,<br/>Node-RED, mosquitto_sub"]
-    ca -- "signs" --> bc
-    clients -- "trust ca.crt, so they<br/>accept broker.crt" --> bc
-    classDef secret fill:#fce8e6,stroke:#c5221f,color:#000
-    class ca secret
-```
-
-1. Create the CA and the broker certificate. Replace `pi01` with your hostname in both places.
-   ```bash
-   mkdir -p ~/iiot/certs && cd ~/iiot/certs
-   openssl req -x509 -newkey rsa:2048 -nodes -days 365 -keyout ca.key -out ca.crt -subj "/CN=PS-01 lab CA"
-   openssl req -newkey rsa:2048 -nodes -keyout broker.key -out broker.csr -subj "/CN=pi01.local"
-   printf "subjectAltName=DNS:pi01.local,DNS:localhost,IP:127.0.0.1\n" > broker.ext
-   openssl x509 -req -in broker.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 365 -out broker.crt -extfile broker.ext
-   openssl verify -CAfile ca.crt broker.crt
-   ```
-   The last line must say `broker.crt: OK`.
-
-| File | What it is | Who may see it |
-|---|---|---|
-| `ca.key` | The CA's private key: whoever has it can make certificates you trust | Nobody. In production it lives offline |
-| `ca.crt` | The CA's public certificate | Every client |
-| `broker.key` | The broker's private key | The broker only |
-| `broker.crt` | The broker's certificate, signed by your CA | Anyone |
-| `subjectAltName` | The names the certificate is valid for | Clients check the name they connected to is on this list |
-
-2. Give the broker its files and switch to step 2 of the settings:
-   ```bash
-   sudo cp ca.crt broker.crt broker.key /etc/mosquitto/certs/
-   sudo chown mosquitto:mosquitto /etc/mosquitto/certs/broker.key
-   sudo chmod 600 /etc/mosquitto/certs/broker.key
-   sudo cp ~/course/code/day2/mosquitto/ps01-step2-tls.conf /etc/mosquitto/conf.d/ps01.conf
-   sudo systemctl restart mosquitto
-   ```
-
-```conf
-# Topic 11, step 2: the same logins and rules, now encrypted with TLS on port 8883.
-listener 8883
-cafile /etc/mosquitto/certs/ca.crt
-certfile /etc/mosquitto/certs/broker.crt
-keyfile /etc/mosquitto/certs/broker.key
-allow_anonymous false
-password_file /etc/mosquitto/passwd
-acl_file /etc/mosquitto/acl
-```
-
-3. Point your programs at port 8883 and the CA. Copy your passwords over from the old file first:
-   ```bash
-   cp ~/course/code/day2/mosquitto/mqtt-step2.json ~/iiot/mqtt.new.json
-   nano ~/iiot/mqtt.new.json
-   mv ~/iiot/mqtt.new.json ~/iiot/mqtt.json && chmod 600 ~/iiot/mqtt.json
-   ```
-   No program changed: only `mqtt.json`. Restart the gateway and pump control; their logs now say `localhost:8883`.
-4. Subscribe over TLS:
-   ```bash
-   mosquitto_sub -h localhost -p 8883 --cafile ~/iiot/certs/ca.crt -t 'ps01/#' -v -u dashboard -P '<dashboard password>'
-   ```
-5. Tidy the firewall: the Day 1 receiver is gone, so close its port.
-   ```bash
-   sudo ufw delete allow in on wlan0 to any port 8080 proto tcp
-   ```
-   The broker serves only programs on this Pi, so it needs no firewall rule at all.
-
-**Try it**
-1. **Sniff again.** `sudo tcpdump -i lo -A -n port 8883` while you subscribe: no password, no readings, only scrambled bytes.
-2. **Port 1883 is gone.** `mosquitto_pub -h localhost -p 1883 -t x -m y` → `Connection refused`.
-3. **No login.** `mosquitto_sub -h localhost -p 8883 --cafile ~/iiot/certs/ca.crt -t 'ps01/#'` → `not authorised`.
-4. **Wrong permissions.** As `dashboard`, try to fake a reading: `mosquitto_pub -h localhost -p 8883 --cafile ~/iiot/certs/ca.crt -u dashboard -P '<password>' -t ps01/pi01/telemetry -m fake`. It seems to work, but nothing arrives at your subscriber, and `journalctl -u mosquitto -n 5` shows `Denied PUBLISH`. A client is not told it was refused, so it learns nothing.
-5. **Wrong CA.** Connect with `--cafile /etc/ssl/certs/ca-certificates.crt` (the public internet CAs) instead of yours: refused. The client trusts *your* CA only, so an impostor broker cannot fool it.
-
-> **Later, in production:** give each device its own client certificate too (mutual TLS, `require_certificate true`), keep `ca.key` off the network, and set certificates to expire and be renewed. Today's 365-day self-made CA is right for a lab and nowhere else.
-
-**Checkpoint ✅** Your broker accepts only TLS on port 8883, only with a login, and only for the topics in the ACL; `tcpdump` shows nothing readable.
+**Checkpoint ✅** Your broker refuses anonymous clients, accepts each program only with its own login, enforces the ACL, and cannot be reached from the plant network.
 
 ---
 
@@ -1066,7 +1011,7 @@ acl_file /etc/mosquitto/acl
 
 **Figure 12.1 — Where everything runs**
 
-![The laptop only runs a web browser, connected over the LAN cable to port 1880 on the Pi; the Pi runs Node-RED, the broker, the gateway and pump control; the Pi reaches the ESP32 plant over Modbus on Wi-Fi](images/day2-fig-12-1-where-it-runs.svg)
+![The laptop only runs a web browser, connected over the LAN cable to port 1880 on the Pi; the Pi runs Node-RED, the Mosquitto broker, the gateway and pump control; the Pi reaches the ESP32 plant over Modbus on Wi-Fi](images/day2-fig-12-1-where-it-runs.svg)
 
 ### 12.1 — Install Node-RED
 
@@ -1106,7 +1051,7 @@ acl_file /etc/mosquitto/acl
 
 1. On your laptop, open the course repository on GitHub, go to `code/day2/ps01-dashboard-flow.json`, and click **Copy raw file**.
 2. In Node-RED: menu **☰ → Import**, paste, then **Import**.
-3. Double-click the **PS-01 broker (TLS)** node (any purple MQTT node → the pencil next to *Server*). On the **Security** tab enter the `dashboard` username and password. The TLS settings already point at `/home/pelatih/iiot/certs/ca.crt`.
+3. Double-click any purple MQTT node, then the pencil next to *Server* (**PS-01 broker**). On the **Security** tab enter the `dashboard` username and password.
 4. Click **Deploy**. Under every MQTT node a green **connected** appears within a few seconds.
 
 **Figure 12.2 — The flow, simplified**
@@ -1169,7 +1114,7 @@ Open `http://pi01.local:1880/dashboard` on your laptop.
 ## End of Day 2 — what you should have
 
 - The `gateway` service reading the real plant over Modbus every 2 seconds and running the level alarm with hysteresis
-- Mosquitto on your Pi accepting only TLS on port 8883, with a login per program and an ACL
+- Mosquitto on your Pi listening only on `127.0.0.1`, with a login per program and an ACL
 - `gateway.py` publishing `telemetry`, `alarm` and `status` (with a last will) under `ps01/<your Pi>/`
 - `pump_control_mqtt.py` taking START/STOP over MQTT, still governed by the door interlock
 - Node-RED with a login, reachable only from the cable side, showing the PS-01 dashboard
@@ -1177,7 +1122,7 @@ Open `http://pi01.local:1880/dashboard` on your laptop.
 **Security recap**
 - Modbus has no security: it stays on the plant network, and only the gateway crosses over.
 - `~/iiot/mqtt.json` and `/etc/mosquitto/passwd` hold credentials: `chmod 600`, never in Git.
-- `ca.key` can mint certificates your whole system trusts. Guard it like a master key.
+- The broker carries plain MQTT and is safe only because it never leaves the Pi. Serve other machines, and you add TLS first.
 - Firewall today: SSH, mDNS and Node-RED on `eth0`; nothing at all on the plant side.
 
 **Extra, if you finish early**

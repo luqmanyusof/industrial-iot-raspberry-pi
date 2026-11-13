@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """One place for MQTT settings. Every program connects the same way, from ~/iiot/mqtt.json.
 
-Securing the broker (Topic 11) changes only that file, never the programs.
+Adding logins to the broker (Topic 11) changes only that file, never the programs.
 """
 import json
 import logging
@@ -27,8 +27,6 @@ def make_client(role: str, will: tuple[str, str] | None = None,
     login = cfg.get("logins", {}).get(role)
     if login:
         client.username_pw_set(login["username"], login["password"])
-    if cfg.get("ca_file"):
-        client.tls_set(ca_certs=cfg["ca_file"])            # encrypt, and check the broker's certificate
     if will:
         client.will_set(will[0], will[1], qos=1, retain=True)
 
