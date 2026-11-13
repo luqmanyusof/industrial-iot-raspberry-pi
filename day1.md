@@ -13,17 +13,6 @@
 
 **Our running use case:** *Stesen Pam PS-01*, a small water pump station. It has a storage tank (level in %), a pump motor (temperature in °C), a door on the pump house and a pump switched by a relay. Your Pi is the station's edge gateway.
 
-**Today's topics**
-
-| # | Topic | Time |
-|---|---|---|
-| 1 | Single-board computers and IoT architecture | 30 min |
-| 2 | Setting up the Raspberry Pi | 45 min |
-| 3 | Python for IoT | 45 min |
-| 4 | Hardening the Pi | 45 min |
-| 5 | Python for gateways: classes, threads, SQLite, HTTP | 75 min |
-| 6 | GPIO: door switch, pump relay and interlock | 90 min |
-
 ---
 
 ## Topic 1 — Single-Board Computers and IoT Architecture (concept)
