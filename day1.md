@@ -9,6 +9,7 @@
 - [ ] Raspberry Pi Imager 2.0 or later installed on your laptop
 - [ ] VS Code installed, with the **Remote - SSH** extension
 - [ ] The lab Wi-Fi name and password (on the whiteboard)
+- [ ] Only needed if Wi-Fi fails: a LAN cable, plus a USB-to-Ethernet adapter if your laptop has no LAN port
 - [ ] Your Pi number from the trainer: `pi01` or `pi02`
 
 **Our running use case:** *Stesen Pam PS-01*, a small water pump station. It has a storage tank (level in %), a pump motor (temperature in °C), a door on the pump house and a pump switched by a relay. Your Pi is the station's edge gateway.
@@ -176,7 +177,57 @@ flowchart LR
 
 > **Error: "REMOTE HOST IDENTIFICATION HAS CHANGED"?** You reflashed the card, so the Pi has a new identity. Remove the old one with `ssh-keygen -R pi01.local` and connect again.
 
-### 2.3 — Connect VS Code
+### 2.3 — No Wi-Fi? Share your laptop's connection over a LAN cable
+
+Use this only if your Pi cannot join the lab Wi-Fi (`pi01.local` never answers, even after 3 minutes). Your laptop stays on Wi-Fi and lends its connection to the Pi through a LAN (Local Area Network) cable. Your laptop becomes the Pi's router.
+
+**Figure 2.2 — Your laptop as the Pi's router**
+
+```mermaid
+flowchart LR
+    net["Internet"] --- wifi["Lab Wi-Fi"]
+    wifi -- "Wi-Fi" --> lap["Your laptop<br/>shares its connection,<br/>hands out an address"]
+    lap -- "LAN cable" --> pi["Raspberry Pi<br/>gets an address from<br/>the laptop automatically"]
+    classDef pi fill:#fff3cd,stroke:#b8860b,color:#000
+    class lap pi
+```
+
+You need a LAN cable, and a USB-to-Ethernet adapter if your laptop has no LAN port. Nothing changes on the Pi: it asks for an address on its LAN port automatically.
+
+1. Connect the cable from the Pi's LAN port to your laptop.
+2. Turn on sharing on your laptop. You need administrator rights; if your laptop is locked down, ask the trainer.
+
+   **Windows**
+   1. Open **Control Panel → Network and Sharing Center → Change adapter settings**.
+   2. Right-click your **Wi-Fi** adapter → **Properties** → **Sharing** tab.
+   3. Tick **Allow other network users to connect through this computer's Internet connection**.
+   4. Under **Home networking connection**, choose your **Ethernet** adapter, then **OK**.
+
+   **macOS**
+   1. Open **System Settings → General → Sharing**, then click **(i)** next to **Internet Sharing**.
+   2. **Share your connection from:** Wi-Fi. **To devices using:** your Ethernet or USB LAN adapter.
+   3. Switch **Internet Sharing** on.
+
+   **Linux** (NetworkManager), replacing `eth0` with your LAN port's name from `ip a`:
+   ```bash
+   nmcli connection add type ethernet ifname eth0 con-name share-to-pi ipv4.method shared
+   nmcli connection up share-to-pi
+   ```
+3. Power-cycle the Pi (or unplug and replug the cable), wait 30 seconds, then connect as usual: `ssh pelatih@pi01.local`
+4. If the name does not resolve, find the Pi's address on your laptop:
+
+| Laptop | The Pi's address is in this range | How to find it |
+|---|---|---|
+| Windows | `192.168.137.x` | `arp -a`, look under `Interface: 192.168.137.1` for a `dynamic` entry |
+| macOS | `192.168.2.x` | `arp -a`, look for an entry on `bridge100` |
+| Linux | `10.42.0.x` | `ip neigh`, look for an entry on your LAN port |
+
+   Then `ssh pelatih@<ip-address>`.
+5. On the Pi, check the internet works: `ping -c 3 8.8.8.8`
+
+> **What you lose on a cable:** the laptop hides the Pi behind itself, so **other people's Pis cannot reach yours**. Your Pi can still reach out: the internet, and the shared plant device on Day 2. For the Topic 5 pair lab, follow the note there.
+
+### 2.4 — Connect VS Code
 
 1. In VS Code, press **F1** and choose **Remote-SSH: Connect to Host…**
 2. Type `pelatih@pi01.local` and press **Enter**. Choose **Linux** if asked, then enter your password.
@@ -185,7 +236,7 @@ flowchart LR
 
 From now on, you edit files in VS Code on your laptop, and they are saved on the Pi.
 
-**Figure 2.2 — Two ways in, one encrypted door**
+**Figure 2.3 — Two ways in, one encrypted door**
 
 ```mermaid
 flowchart LR
@@ -207,7 +258,7 @@ flowchart LR
     vss --> files
 ```
 
-### 2.4 — Linux essentials
+### 2.5 — Linux essentials
 
 Run each command in the terminal and look at the result.
 
@@ -235,7 +286,7 @@ Run each command in the terminal and look at the result.
    cd ~/iiot
    ```
 
-**Figure 2.3 — Where everything lives by the end of today (green: yours; red: system files, need sudo)**
+**Figure 2.4 — Where everything lives by the end of today (green: yours; red: system files, need sudo)**
 
 ```mermaid
 flowchart LR
@@ -256,7 +307,7 @@ flowchart LR
 
 > **`sudo` is a loaded gun.** Use it only when a command needs system rights (installing software, editing system files, managing services). Never run your own Python programs with `sudo`.
 
-### 2.5 — Services and logs
+### 2.6 — Services and logs
 
 A **service** is a program that Linux starts and supervises in the background. **systemd** is the part of Linux that manages services.
 
@@ -278,7 +329,7 @@ A **service** is a program that Linux starts and supervises in the background. *
 | `sudo systemctl enable/disable <name>` | Start it on boot, or not |
 | `journalctl -u <name> -f` | Follow its log live |
 
-### 2.6 — Network checks
+### 2.7 — Network checks
 
 ```bash
 hostname -I          # your Pi's IP address(es)
@@ -986,6 +1037,9 @@ if __name__ == "__main__":
 ```
 
 2. Set `FORWARD_URL` to your **neighbour's** Pi (`pi01` uses `pi02.local`, `pi02` uses `pi01.local`).
+
+   > **Pi on a LAN cable (2.3)?** Your neighbour cannot reach your receiver. Run both programs on your own Pi instead: keep `receiver.py` running in one terminal and set `FORWARD_URL = "http://127.0.0.1:8080/readings"`. Everything in this topic still works; only the hop between two Pis is missing.
+
 3. Run it: `python gateway.py`. Your log shows `Stored and forwarded`, and your neighbour's receiver prints your readings.
 
 | Piece | What it does |
