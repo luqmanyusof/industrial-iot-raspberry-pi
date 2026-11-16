@@ -3,9 +3,9 @@ Description=PS-01 simulated pump station sensors
 After=network.target
 
 [Service]
-User=pelatih
-WorkingDirectory=/home/pelatih/iiot
-ExecStart=/home/pelatih/iiot/.venv/bin/python /home/pelatih/iiot/sim_sensor.py
+User=student01
+WorkingDirectory=/home/student01/iiot
+ExecStart=/home/student01/iiot/.venv/bin/python /home/student01/iiot/sim_sensor.py
 Restart=always
 RestartSec=3
 Environment=PYTHONUNBUFFERED=1

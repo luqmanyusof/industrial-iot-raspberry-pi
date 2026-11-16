@@ -32,7 +32,7 @@ def fig_15_1():
             under=False, arrow='end')
     sc.tag(*gap_point(0, 80), 'production only: relayhost', '#5f6368')
     sc.tag(*gap_point(1, 80), 'email', '#5f6368')
-    caption(sc, 0, ['Your Pi: gateway.py → Postfix', 'today, mail stays here:', '/var/mail/pelatih, read with mail'],
+    caption(sc, 0, ['Your Pi: gateway.py → Postfix', 'today, mail stays here:', '/var/mail/student01, read with mail'],
             GW)
     caption(sc, 1, ["Organisation's mail server", 'production only'], GREY)
     caption(sc, 2, ["Operator's inbox", 'production only: PC or phone'], IT)
@@ -60,7 +60,7 @@ def fig_sentinel():
     esp32(sc, px + 33, py + 50)
     sc.waves(px + 91, py + 65, 14)
     qx, qy = px + 2 * 165, py - 2 * 165 + 165
-    for i, name in enumerate(['pi01', 'pi02']):
+    for i, name in enumerate(['student01', 'student02']):
         sx, sy = qx + i * 165, qy + i * 165 - 165
         sc.box(sx, sy, -3, W, W, 3, GW, depth=-1e6 + sx + sy, outline=False)
         raspberry_pi(sc, sx + 18, sy + 34)

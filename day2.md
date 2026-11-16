@@ -5,7 +5,7 @@
 
 ## Before you start
 
-- [ ] Your Pi answers on the cable side: `ssh pelatih@pi01.local`
+- [ ] Your Pi answers on the cable side: `ssh student01@student01.local`
 - [ ] Your Pi reaches the plant: `ping -c 3 192.168.4.1`
 - [ ] The ESP32 plant's screen shows `PS-01  plant running`
 - [ ] Get today's files onto your Pi:
@@ -239,7 +239,7 @@ All three Pis now poll the same ESP32 at the same time. A Modbus TCP server keep
 
 **Figure 8.1 — Every Pi is a client of the one plant**
 
-![pi01, pi02 and the trainer's pi00 each send Modbus requests to the ESP32 plant at 192.168.4.1 port 502, every 2 seconds](images/day2-fig-8-1-polling.svg)
+![student01, student02 and the trainer's student00 each send Modbus requests to the ESP32 plant at 192.168.4.1 port 502, every 2 seconds](images/day2-fig-8-1-polling.svg)
 
 1. Read the plant (the defaults are `192.168.4.1` and port `502`):
    ```bash
@@ -562,7 +562,7 @@ flowchart LR
 
 With HTTP on Day 1, your gateway had to know exactly who to send each reading to. **MQTT** (Message Queuing Telemetry Transport) puts a **broker** in the middle:
 
-- A **publisher** sends a message to a **topic**, a name like `ps01/pi01/telemetry`. It does not know or care who is listening.
+- A **publisher** sends a message to a **topic**, a name like `ps01/student01/telemetry`. It does not know or care who is listening.
 - A **subscriber** tells the broker which topics it wants, and gets every message on them.
 - Adding a dashboard, a historian or an alarm system means adding a subscriber. The gateway does not change.
 
@@ -590,7 +590,7 @@ flowchart LR
 | **Topic** | A path-like name; `+` matches one level, `#` matches everything below | `ps01/+/telemetry`, `ps01/#` |
 | **QoS** (Quality of Service) | 0 = at most once (fire and forget), 1 = at least once (acknowledged), 2 = exactly once | Telemetry QoS 0 (the next reading is 2 s away); commands and state QoS 1 |
 | **Retained message** | The broker keeps the last message on a topic and hands it to every new subscriber at once | Alarm state, pump state, gateway status |
-| **Last will** | A message the broker publishes *for* a client that vanishes without saying goodbye | `ps01/pi01/status` → `offline` |
+| **Last will** | A message the broker publishes *for* a client that vanishes without saying goodbye | `ps01/student01/status` → `offline` |
 | **Keep-alive** | The client pings the broker; after 1.5 × keep-alive of silence the broker declares it dead | 10 seconds |
 
 > **MQTT or DDS?** Many defence and naval combat systems use **DDS** (Data Distribution Service) instead. DDS has no broker: publishers and subscribers find each other directly, with detailed quality-of-service and real-time options. It suits tightly coupled systems on fast local networks. MQTT's single broker is simpler to secure and manage, and suits many small devices over unreliable links, which is why it dominates IIoT.
@@ -607,7 +607,7 @@ Design topics before writing code; changing them later breaks every subscriber (
 | `ps01/<gateway>/pump/cmd` | `START` / `STOP` | dashboard, or you | 1 | no |
 | `ps01/<gateway>/pump/state` | JSON: pump, door, reason | `pump_control_mqtt.py` | 1 | yes |
 
-`<gateway>` is your Pi's hostname, for example `pi01`.
+`<gateway>` is your Pi's hostname, for example `student01`.
 
 > **Never retain a command.** A retained `START` would be replayed to the pump every time it reconnects, perhaps hours later. Retain *state*, never *commands*.
 
@@ -864,7 +864,7 @@ sequenceDiagram
     participant B as Broker
     participant P as pump_control_mqtt.py
     participant R as Relay
-    D->>B: ps01/pi01/pump/cmd = START (QoS 1)
+    D->>B: ps01/student01/pump/cmd = START (QoS 1)
     B->>P: START
     P->>P: door closed? STOP not held?
     alt door open
@@ -877,11 +877,11 @@ sequenceDiagram
 ```
 
 **Try it**
-1. **Refused from afar.** Remove the door jumper, then from terminal 2: `mosquitto_pub -h localhost -t ps01/pi01/pump/cmd -m START -q 1`. The relay does not click, and your subscriber shows `pump/state` with `refused: door is open`.
+1. **Refused from afar.** Remove the door jumper, then from terminal 2: `mosquitto_pub -h localhost -t ps01/student01/pump/cmd -m START -q 1`. The relay does not click, and your subscriber shows `pump/state` with `refused: door is open`.
 2. **Allowed.** Put the door jumper back and send `START` again: the relay clicks. Send `STOP`.
-3. **The last will.** Kill the gateway the hard way: `sudo systemctl kill -s SIGKILL gateway`. The subscriber prints `ps01/pi01/status offline` at once: the broker saw the connection drop without a goodbye and published the last will on the gateway's behalf. Three seconds later systemd restarts the gateway and `online` follows. (If the network dies silently instead, the broker only notices after 1.5 × keep-alive, about 15 seconds.)
+3. **The last will.** Kill the gateway the hard way: `sudo systemctl kill -s SIGKILL gateway`. The subscriber prints `ps01/student01/status offline` at once: the broker saw the connection drop without a goodbye and published the last will on the gateway's behalf. Three seconds later systemd restarts the gateway and `online` follows. (If the network dies silently instead, the broker only notices after 1.5 × keep-alive, about 15 seconds.)
 4. **Retained state.** Stop and start your subscriber: the latest `status`, `alarm` and `pump/state` arrive at once, before any new reading.
-5. **Never retain a command.** Send `mosquitto_pub -h localhost -t ps01/pi01/pump/cmd -m START -r`, then restart `pump_control_mqtt.py`: the pump starts by itself on reconnect. Clear it at once with `mosquitto_pub -h localhost -t ps01/pi01/pump/cmd -r -n`. This is exactly why commands are never retained.
+5. **Never retain a command.** Send `mosquitto_pub -h localhost -t ps01/student01/pump/cmd -m START -r`, then restart `pump_control_mqtt.py`: the pump starts by itself on reconnect. Clear it at once with `mosquitto_pub -h localhost -t ps01/student01/pump/cmd -r -n`. This is exactly why commands are never retained.
 
 **Checkpoint ✅** `mosquitto_sub -t 'ps01/#'` shows your gateway's telemetry, alarm and status, a remote START is refused with the door open and accepted with it closed, and a killed gateway shows up as `offline`.
 
@@ -989,7 +989,7 @@ topic write ps01/+/pump/cmd
 2. **Wrong password.** Same command with `-u dashboard -P wrong` → refused.
 3. **Wrong permissions.** As `dashboard`, try to fake a reading:
    ```bash
-   mosquitto_pub -h localhost -u dashboard -P '<dashboard password>' -t ps01/pi01/telemetry -m fake
+   mosquitto_pub -h localhost -u dashboard -P '<dashboard password>' -t ps01/student01/telemetry -m fake
    ```
    It seems to work, but nothing arrives at your subscriber, and `journalctl -u mosquitto -n 5` shows `Denied PUBLISH`. A client is not told it was refused, so it learns nothing about the rules.
 4. **Not from outside.** Ask your neighbour to try your broker over the plant network: `mosquitto_sub -h 192.168.4.11 -t '#' -u dashboard -P x`. It just hangs: your firewall drops it, and behind the firewall nothing listens on that address anyway. Press **Ctrl+C**.
@@ -1044,9 +1044,9 @@ topic write ps01/+/pump/cmd
    cd ~/.node-red && npm install @flowfuse/node-red-dashboard@1.36.1
    sudo systemctl restart nodered
    ```
-5. On your laptop, open `http://pi01.local:1880` and log in as `admin`.
+5. On your laptop, open `http://student01.local:1880` and log in as `admin`.
 
-> **Never leave the editor without a login.** Anyone who reaches an open Node-RED editor can run any code on your Pi as `pelatih`, including switching the pump. The firewall rule keeps it off the plant side; the login keeps it off the rest.
+> **Never leave the editor without a login.** Anyone who reaches an open Node-RED editor can run any code on your Pi as `student01`, including switching the pump. The firewall rule keeps it off the plant side; the login keeps it off the rest.
 
 ### 12.2 — Import the PS-01 flow
 
@@ -1074,7 +1074,7 @@ flowchart TB
     end
     subgraph L4["Commands"]
         direction LR
-        b["buttons<br/>START, STOP"] --> fc["function<br/>command topic"] --> o["mqtt out<br/>ps01/pi01/pump/cmd"]
+        b["buttons<br/>START, STOP"] --> fc["function<br/>command topic"] --> o["mqtt out<br/>ps01/student01/pump/cmd"]
     end
     L1 ~~~ L2 ~~~ L3 ~~~ L4
 ```
@@ -1089,7 +1089,7 @@ flowchart TB
 
 ### 12.3 — Operate the plant
 
-Open `http://pi01.local:1880/dashboard` on your laptop.
+Open `http://student01.local:1880/dashboard` on your laptop.
 
 **Figure 12.3 — A remote START refused by the door interlock**
 

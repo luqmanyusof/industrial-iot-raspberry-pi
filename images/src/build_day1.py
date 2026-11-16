@@ -115,8 +115,8 @@ def fig_2_1():
     from iso import shade
     sc = Scene()
     W, G, R = 130, 185, 165                     # plate size, column step (along x/-y), row step (along x/+y)
-    rows = [('Participant 1', 'pi01', '192.168.4.11'), ('Participant 2', 'pi02', '192.168.4.12'),
-            ('Trainer', 'pi00', '192.168.4.10')]
+    rows = [('Participant 1', 'student01', '192.168.4.11'), ('Participant 2', 'student02', '192.168.4.12'),
+            ('Trainer', 'student00', '192.168.4.10')]
     ex, ey = 2 * G + R, -2 * G + R             # shared ESP32 plate, level with the middle row
     for r, (who, name, ip) in enumerate(rows):
         lx, ly = r * R, r * R                   # laptop plate
@@ -170,7 +170,7 @@ def fig_2_2():
     sc.tag(*gap_point(1, 75), 'insert, cable in, power on', DATA)
     caption(sc, 0, ['1. Raspberry Pi Imager', 'on your laptop'], G)
     caption(sc, 1, ['2. microSD card', 'hostname, user, SSH on'], G)
-    caption(sc, 2, ['3. First boot (about 90 s)', 'gets an address from your laptop,', 'reachable as pi01.local'], GW)
+    caption(sc, 2, ['3. First boot (about 90 s)', 'gets an address from your laptop,', 'reachable as student01.local'], GW)
     save(sc, 'day1-fig-2-2-headless.svg')
 
 
@@ -200,9 +200,9 @@ def fig_2_4():
     sc.wire([at(0, 115, 100, 1), gap_point(0, 1, 30), at(1, 40, 110, 1), at(1, 60, 103, 2)], CABLE, 6, depth=-10)
     sc.tag(*gap_point(0, 1, 30), 'SSH · encrypted · port 22', CABLE)
     caption(sc, 0, ['Your laptop', 'Terminal / PowerShell,', 'VS Code + Remote-SSH'], IT)
-    caption(sc, 1, ['Raspberry Pi (pi01)'], GW)
+    caption(sc, 1, ['Raspberry Pi (student01)'], GW)
     sc.callout(*at(1, 60, 60, 10), 130, -70, ['SSH server, port 22', 'checks who you are'])
-    sc.callout(*at(1, 40, 75, 6), 160, -20, ['Shell as pelatih', 'and the VS Code Server'])
+    sc.callout(*at(1, 40, 75, 6), 160, -20, ['Shell as student01', 'and the VS Code Server'])
     sc.callout(*at(1, 55, 95, 3), 160, 30, ['Your files', '~/iiot'])
     save(sc, 'day1-fig-2-4-two-ways-in.svg')
 
@@ -217,11 +217,11 @@ def fig_5_1():
     sc.waves(*at(1, 100, 75, 12))
     sc.wire([at(0, 110, 60, 50), at(2, 40, 60, 50)], DATA, 3.5, under=False, arrow='end')
     sc.wire([at(2, 40, 90, 30), at(0, 110, 90, 30)], '#e8710a', 3.5, under=False, arrow='end')
-    sc.tag(*at(1, 75, 75, 95), 'pi01 → pi02 · POST /readings', DATA)
-    sc.tag(*at(1, 120, 120, 0), 'pi02 → pi01 · POST /readings', '#e8710a')
-    caption(sc, 0, ['pi01 · 192.168.4.11', 'gateway.py and receiver.py'], OT)
+    sc.tag(*at(1, 75, 75, 95), 'student01 → student02 · POST /readings', DATA)
+    sc.tag(*at(1, 120, 120, 0), 'student02 → student01 · POST /readings', '#e8710a')
+    caption(sc, 0, ['student01 · 192.168.4.11', 'gateway.py and receiver.py'], OT)
     caption(sc, 1, ['ESP32 access point', 'Wi-Fi PS01-PLANT,', 'relays the traffic'], OT)
-    caption(sc, 2, ['pi02 · 192.168.4.12', 'gateway.py and receiver.py'], OT)
+    caption(sc, 2, ['student02 · 192.168.4.12', 'gateway.py and receiver.py'], OT)
     save(sc, 'day1-fig-5-1-pair-lab.svg')
 
 

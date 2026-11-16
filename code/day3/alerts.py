@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Email alerts through the mail server on this Pi (Postfix on localhost:25)."""
+import getpass
 import logging
 import queue
 import smtplib
@@ -13,7 +14,7 @@ from mqtt_link import GATEWAY
 
 log = logging.getLogger("alerts")
 
-MAIL_TO = "pelatih"                         # a user on this Pi; Postfix delivers to /var/mail/pelatih
+MAIL_TO = getpass.getuser()                 # the user running the gateway, e.g. student01 -> /var/mail/student01
 MAIL_FROM = f"ps01-{GATEWAY}@localhost"
 REPEAT_GAP_S = 600                          # an alert that clears and returns within 10 min is not emailed again
 

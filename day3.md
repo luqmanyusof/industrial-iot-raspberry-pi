@@ -250,7 +250,7 @@ def forward_loop(db_file: Path, client: mqtt.Client, stop: threading.Event) -> N
 | `add(db, …)` | Inserts the row but does not commit: the caller commits the reading and the message together |
 | `wait_for_publish(5)` + `is_published()` | Waits for the broker's PUBACK; only then is the row marked sent |
 | `break` on failure | Stop this batch and try again from the same message, so nothing is skipped |
-| `msg_id` | Added when sending: `pi01-1234`, unique for this gateway |
+| `msg_id` | Added when sending: `student01-1234`, unique for this gateway |
 
 In `gateway.py`, the store thread now writes both rows in one transaction:
 
@@ -311,7 +311,7 @@ Programs rarely talk to a remote mail server themselves. They hand mail to a **l
 
 **Figure 15.1 — Where an alert goes, today and in production**
 
-![Today, gateway.py hands the email to Postfix on the Pi and it is delivered to /var/mail/pelatih; in production, Postfix forwards it through the organisation's mail server to the operator's inbox](images/day3-fig-15-1-mail-path.svg)
+![Today, gateway.py hands the email to Postfix on the Pi and it is delivered to /var/mail/student01; in production, Postfix forwards it through the organisation's mail server to the operator's inbox](images/day3-fig-15-1-mail-path.svg)
 
 1. Tell the installer the answers in advance, then install Postfix and the `mail` command:
    ```bash
@@ -331,7 +331,7 @@ Programs rarely talk to a remote mail server themselves. They hand mail to a **l
 
 3. Send yourself a test, then read it:
    ```bash
-   echo "Test from $(hostname)" | mail -s "Hello" pelatih
+   echo "Test from $(hostname)" | mail -s "Hello" $USER
    mail
    ```
    In `mail`: type a message number and **Enter** to read it, `d` to delete it, `q` to quit.
@@ -372,6 +372,7 @@ One more rule: if the same alert is raised again within 10 minutes of its last e
 ```python
 #!/usr/bin/env python3
 """Email alerts through the mail server on this Pi (Postfix on localhost:25)."""
+import getpass
 import logging
 import queue
 import smtplib
@@ -385,7 +386,7 @@ from mqtt_link import GATEWAY
 
 log = logging.getLogger("alerts")
 
-MAIL_TO = "pelatih"                         # a user on this Pi; Postfix delivers to /var/mail/pelatih
+MAIL_TO = getpass.getuser()                 # the user running the gateway, e.g. student01 -> /var/mail/student01
 MAIL_FROM = f"ps01-{GATEWAY}@localhost"
 REPEAT_GAP_S = 600                          # an alert that clears and returns within 10 min is not emailed again
 
@@ -611,7 +612,7 @@ flowchart TD
 ## End of the morning — what you should have
 
 - `gateway.py` as a complete edge node: polling, alarm, outbox with store-and-forward, events, email alerts, restart reporting
-- Postfix delivering alerts to `pelatih` on your Pi
+- Postfix delivering alerts to `student01` on your Pi
 - A hardware watchdog, a persistent journal capped at 100 MB, and a synchronised clock
 
 **This afternoon:** [Op SENTINEL](sentinel.md). Your edge node skills, applied to three remote outposts.

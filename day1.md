@@ -12,7 +12,9 @@
 - [ ] A LAN cable, plus a USB-to-Ethernet adapter if your laptop has no LAN port
 - [ ] Administrator rights on your laptop (to share its internet with the Pi)
 - [ ] The plant Wi-Fi password (on the whiteboard)
-- [ ] Your Pi number from the trainer: `pi01` or `pi02`
+- [ ] Your student number from the trainer: `student01` or `student02`. It is both your Pi's name and your username.
+
+> **Your number, everywhere.** These notes show **`student01`**. If you are `student02`, use `student02` wherever you see `student01` (in commands, file paths and settings), and `192.168.4.12` wherever you see `192.168.4.11`. The trainer's Pi is `student00`.
 
 **Our running use case:** *Stesen Pam PS-01*, a small water pump station. It has a storage tank (level in %), a pump motor (temperature in °C), a door on the pump house and a pump switched by a relay. Your Pi is the station's edge gateway.
 
@@ -99,7 +101,7 @@ Your Pi lives on **two networks** at once, exactly like a real gateway:
 
 ![Three identical stations, for participant 1, participant 2 and the trainer, each a laptop joined by a LAN cable to a Raspberry Pi; all three Pis join the Wi-Fi of one shared ESP32 plant](images/day1-fig-2-1-two-networks.svg)
 
-> **Same setup for everyone.** Each participant, and the trainer, has their own laptop, LAN cable and Raspberry Pi 4 Model B, and does every step in these notes the same way. Only your Pi's name and plant address differ. The trainer's Pi, `pi00`, follows along on the big screen.
+> **Same setup for everyone.** Each participant, and the trainer, has their own laptop, LAN cable and Raspberry Pi 4 Model B, and does every step in these notes the same way. Only your Pi's name and plant address differ. The trainer's Pi, `student00`, follows along on the big screen.
 
 > **The plant network has no internet, on purpose.** The only machine that touches both sides is your Pi, and it does not pass traffic from one side to the other. This is the Purdue boundary from Topic 1, built with real cables.
 
@@ -118,9 +120,9 @@ Your Pi lives on **two networks** at once, exactly like a real gateway:
 
 | Setting | Value |
 |---|---|
-| Hostname | Your Pi number, e.g. `pi01` |
+| Hostname | Your student number, e.g. `student01` |
 | Localisation | Time zone `Asia/Kuala_Lumpur`, keyboard `us` |
-| Username | `pelatih` |
+| Username | The same, e.g. `student01` |
 | Password | Your own, at least 8 characters. Write it down. |
 | Wi-Fi | **Leave empty** (skip). The Pi joins the plant's Wi-Fi in 2.4. |
 | Remote access | **Enable SSH**, with password authentication |
@@ -152,7 +154,7 @@ You need a LAN cable, a USB-to-Ethernet adapter if your laptop has no LAN port, 
 
 > **Sharing stopped working later?** Windows sometimes turns sharing off when the laptop joins a different Wi-Fi network. Untick and tick the box again.
 
-If `pi01.local` does not answer in the next step, find the Pi's address. In PowerShell:
+If `student01.local` does not answer in the next step, find the Pi's address. In PowerShell:
 
 ```powershell
 arp -a
@@ -181,15 +183,15 @@ The Pi gets a `10.42.0.x` address; `ip neigh` shows it.
 1. On your laptop, open **PowerShell**: press the **Windows** key, type `powershell`, press **Enter**. Windows 10 and 11 include the `ssh` command.
 2. Connect, using your hostname:
    ```powershell
-   ssh pelatih@pi01.local
+   ssh student01@student01.local
    ```
 3. The first time, type `yes` to accept the Pi's fingerprint, then your password.
-4. Your prompt changes to `pelatih@pi01:~ $`. You are now typing on the Pi.
+4. Your prompt changes to `student01@student01:~ $`. You are now typing on the Pi.
 5. Check the internet works through your laptop: `ping -c 3 8.8.8.8`
 
-> **Error: "Could not resolve hostname"?** Your laptop cannot find the Pi by name. Use the address `arp -a` showed you in 2.2: `ssh pelatih@<ip-address>`.
+> **Error: "Could not resolve hostname"?** Your laptop cannot find the Pi by name. Use the address `arp -a` showed you in 2.2: `ssh student01@<ip-address>`.
 
-> **Error: "REMOTE HOST IDENTIFICATION HAS CHANGED"?** You reflashed the card, so the Pi has a new identity. Remove the old one with `ssh-keygen -R pi01.local` and connect again.
+> **Error: "REMOTE HOST IDENTIFICATION HAS CHANGED"?** You reflashed the card, so the Pi has a new identity. Remove the old one with `ssh-keygen -R student01.local` and connect again.
 
 ### 2.4 — Join the plant network
 
@@ -198,9 +200,9 @@ The ESP32 plant runs its own Wi-Fi network, `PS01-PLANT`. Every device on it has
 | Device | Plant address |
 |---|---|
 | ESP32 plant (the access point) | `192.168.4.1` |
-| `pi00` (the trainer's Pi) | `192.168.4.10` |
-| `pi01` | `192.168.4.11` |
-| `pi02` | `192.168.4.12` |
+| `student00` (the trainer's Pi) | `192.168.4.10` |
+| `student01` | `192.168.4.11` |
+| `student02` | `192.168.4.12` |
 
 1. Set the Wi-Fi country, so the radio is allowed to switch on:
    ```bash
@@ -235,7 +237,7 @@ The ESP32 plant runs its own Wi-Fi network, `PS01-PLANT`. Every device on it has
 ### 2.5 — Connect VS Code
 
 1. In VS Code, press **F1** and choose **Remote-SSH: Connect to Host…**
-2. Type `pelatih@pi01.local` and press **Enter**. Choose **Linux** if asked, then enter your password.
+2. Type `student01@student01.local` and press **Enter**. Choose **Linux** if asked, then enter your password.
 3. Wait while VS Code installs its helper on the Pi (first time only, 1–2 minutes).
 4. Open a terminal inside VS Code: **Terminal → New Terminal**. This terminal runs on the Pi.
 
@@ -277,7 +279,7 @@ Run each command in the terminal and look at the result.
 
 ```mermaid
 flowchart LR
-    root["/"] --> home["/home/pelatih<br/>your home, ~"]
+    root["/"] --> home["/home/student01<br/>your home, ~"]
     root --> etc["/etc<br/>system settings"]
     home --> iiot["~/iiot<br/>course folder"]
     home --> keys["~/.ssh/authorized_keys<br/>your public key (Topic 4)"]
@@ -331,7 +333,7 @@ ss -tulpn                # which programs are listening on which ports
 In the `ss` output, find port **22**. That is SSH, waiting for connections.
 
 **Try it**
-1. Ping your neighbour's Pi on the plant network: `ping -c 3 192.168.4.12` (or `.11` if you are `pi02`).
+1. Ping your neighbour's Pi on the plant network: `ping -c 3 192.168.4.12` (or `.11` if you are `student02`).
 2. **Cut the plant link.** `sudo nmcli connection down plant`. Ping the ESP32 again: it fails, but `ping 8.8.8.8` still works. The two networks really are separate. Bring it back with `sudo nmcli connection up plant`.
 3. **Break it on purpose.** Stop SSH while you are connected through it: `sudo systemctl stop ssh`. Your current session stays open, but try a *new* connection from a second PowerShell window. It is refused. A stopped service means a closed door.
 4. **Put everything back:** `sudo systemctl start ssh`, and confirm a new connection works.
@@ -611,9 +613,9 @@ A gateway program must start by itself after a power cut and restart itself afte
    After=network.target
 
    [Service]
-   User=pelatih
-   WorkingDirectory=/home/pelatih/iiot
-   ExecStart=/home/pelatih/iiot/.venv/bin/python /home/pelatih/iiot/sim_sensor.py
+   User=student01
+   WorkingDirectory=/home/student01/iiot
+   ExecStart=/home/student01/iiot/.venv/bin/python /home/student01/iiot/sim_sensor.py
    Restart=always
    RestartSec=3
    Environment=PYTHONUNBUFFERED=1
@@ -624,7 +626,7 @@ A gateway program must start by itself after a power cut and restart itself afte
 
 | Line | What it does |
 |---|---|
-| `User=pelatih` | Runs as your normal user, not as root |
+| `User=student01` | Runs as your normal user, not as root |
 | `ExecStart=` | The venv's Python, so your installed packages are found. Full paths only. |
 | `Restart=always` | Restart whenever the program exits, including after a crash |
 | `RestartSec=3` | Wait 3 seconds before restarting, so a broken program cannot restart in a tight loop |
@@ -684,7 +686,7 @@ flowchart TD
     listen -- "no" --> refused["Connection refused"]
     listen -- "yes, port 22" --> key{"sshd: a valid key?<br/>passwords and root login are off"}
     key -- "no" --> denied["Permission denied<br/>(publickey)"]
-    key -- "yes" --> user["Logged in as pelatih<br/>sudo needed for system changes"]
+    key -- "yes" --> user["Logged in as student01<br/>sudo needed for system changes"]
     classDef bad fill:#fce8e6,stroke:#c5221f,color:#000
     classDef good fill:#e6f4ea,stroke:#188038,color:#000
     class drop,refused,denied bad
@@ -704,7 +706,7 @@ sequenceDiagram
     participant L as Laptop (private key)
     participant P as Pi (authorized_keys)
     Note over L,P: Once: copy the PUBLIC key into ~/.ssh/authorized_keys
-    L->>P: pelatih wants to log in with this public key
+    L->>P: student01 wants to log in with this public key
     P-->>L: That key is in authorized_keys. Prove it is yours.
     L->>L: Passphrase unlocks the private key, sign this session
     L->>P: Signature
@@ -719,9 +721,9 @@ sequenceDiagram
    ```
 2. Copy the public key to the Pi (one line; it asks for the Pi password one last time):
    ```powershell
-   type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh pelatih@pi01.local "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+   type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh student01@student01.local "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
    ```
-3. Open a **new** PowerShell window and connect: `ssh pelatih@pi01.local`. It asks for your key passphrase, not the Pi password.
+3. Open a **new** PowerShell window and connect: `ssh student01@student01.local`. It asks for your key passphrase, not the Pi password.
 4. Stop VS Code asking for the passphrase every time: let Windows' built-in SSH agent remember the key. In PowerShell **as administrator** (right-click PowerShell → **Run as administrator**):
    ```powershell
    Get-Service ssh-agent | Set-Service -StartupType Automatic
@@ -732,7 +734,7 @@ sequenceDiagram
 <details>
 <summary>Not on Windows?</summary>
 
-On macOS or Linux, step 2 is simply `ssh-copy-id pelatih@pi01.local`, and the SSH agent already runs for you.
+On macOS or Linux, step 2 is simply `ssh-copy-id student01@student01.local`, and the SSH agent already runs for you.
 
 </details>
 
@@ -771,7 +773,7 @@ On macOS or Linux, step 2 is simply `ssh-copy-id pelatih@pi01.local`, and the SS
 2. Allow what you need, with a comment saying why:
    ```bash
    sudo ufw limit in on eth0 to any port 22 proto tcp comment 'SSH, office side only, rate-limited'
-   sudo ufw allow in on eth0 to any port 5353 proto udp comment 'mDNS, so pi01.local still resolves'
+   sudo ufw allow in on eth0 to any port 5353 proto udp comment 'mDNS, so student01.local still resolves'
    ```
 3. Switch it on and check it:
    ```bash
@@ -783,7 +785,7 @@ On macOS or Linux, step 2 is simply `ssh-copy-id pelatih@pi01.local`, and the SS
 |---|---|
 | `default deny incoming` | Anything not listed is dropped |
 | `limit in on eth0 … port 22` | SSH allowed **only from the LAN cable side**, and an address that tries 6 connections in 30 seconds is blocked for a while (slows password guessing) |
-| `allow in on eth0 … port 5353` | Your laptop finds the Pi by name using mDNS (multicast DNS). Without it, `pi01.local` stops working |
+| `allow in on eth0 … port 5353` | Your laptop finds the Pi by name using mDNS (multicast DNS). Without it, `student01.local` stops working |
 | *(nothing for `wlan0`)* | The plant side gets no way in at all. A compromised device in the plant cannot even knock on the gateway's door |
 
 ### 4.4 — Turn off what you do not use
@@ -800,10 +802,10 @@ On macOS or Linux, step 2 is simply `ssh-copy-id pelatih@pi01.local`, and the SS
 **Try it**
 1. **Break it on purpose.** From your laptop, try to log in with a password only:
    ```powershell
-   ssh -o PubkeyAuthentication=no pelatih@pi01.local
+   ssh -o PubkeyAuthentication=no student01@student01.local
    ```
    You get `Permission denied (publickey)`. That is what an attacker sees.
-2. **Knock from the plant side.** Ask your neighbour to SSH to your Pi over the plant network: `ssh pelatih@192.168.4.11` (or `.12`). It hangs, then times out: `ufw` drops it without a reply.
+2. **Knock from the plant side.** Ask your neighbour to SSH to your Pi over the plant network: `ssh student01@192.168.4.11` (or `.12`). It hangs, then times out: `ufw` drops it without a reply.
 
 **Checkpoint ✅** You log in with your key, password login is refused, `sudo ufw status` shows only SSH and mDNS allowed, both on `eth0`, and SSH from the plant side times out.
 
@@ -813,7 +815,7 @@ On macOS or Linux, step 2 is simply `ssh-copy-id pelatih@pi01.local`, and the SS
 
 **Goal:** turn the simulator into a real gateway structure: read, store and forward in separate threads, so a slow or dead network never stops the readings. On Day 2 you swap the simulator for real equipment and keep everything else.
 
-**Open:** VS Code on your Pi, folder `~/iiot`. Work in pairs: `pi01` forwards to `pi02`, and `pi02` forwards to `pi01`.
+**Open:** VS Code on your Pi, folder `~/iiot`. Work in pairs: `student01` forwards to `student02`, and `student02` forwards to `student01`.
 
 ### 5.1 — The four new ideas
 
@@ -846,7 +848,7 @@ flowchart TB
 
 **Figure 5.1 — The pair lab: each gateway forwards to the other Pi**
 
-![pi01 and pi02 send readings to each other's receiver through the ESP32 access point](images/day1-fig-5-1-pair-lab.svg)
+![student01 and student02 send readings to each other's receiver through the ESP32 access point](images/day1-fig-5-1-pair-lab.svg)
 
 1. Create `~/iiot/receiver.py` (or copy `code/day1/receiver.py`):
 
@@ -1031,7 +1033,7 @@ if __name__ == "__main__":
     main()
 ```
 
-2. Set `FORWARD_URL` to your **neighbour's** plant address (`pi01` uses `192.168.4.12`, `pi02` uses `192.168.4.11`).
+2. Set `FORWARD_URL` to your **neighbour's** plant address (`student01` uses `192.168.4.12`, `student02` uses `192.168.4.11`).
 3. Run it: `python gateway.py`. Your log shows `Stored and forwarded`, and your neighbour's receiver prints your readings.
 
 | Piece | What it does |
@@ -1101,9 +1103,9 @@ The gateway replaces the Topic 3 simulator.
    After=network.target
 
    [Service]
-   User=pelatih
-   WorkingDirectory=/home/pelatih/iiot
-   ExecStart=/home/pelatih/iiot/.venv/bin/python /home/pelatih/iiot/gateway.py
+   User=student01
+   WorkingDirectory=/home/student01/iiot
+   ExecStart=/home/student01/iiot/.venv/bin/python /home/student01/iiot/gateway.py
    Restart=always
    RestartSec=3
    Environment=PYTHONUNBUFFERED=1
@@ -1394,7 +1396,7 @@ flowchart LR
 
 ## End of Day 1 — what you should have
 
-- A Raspberry Pi named `pi01` / `pi02`, updated, reachable from VS Code with an SSH key
+- A Raspberry Pi named after your student number (`student01` / `student02`), updated, reachable from VS Code with an SSH key
 - On two networks: internet and SSH through your laptop's cable (`eth0`), the plant through `PS01-PLANT` (`wlan0`, `192.168.4.11` / `.12`)
 - Password login off, and a firewall allowing only SSH and mDNS from the cable side, and port 8080 from the plant side
 - `~/iiot/.venv` with `requests`, `pymodbus` and `paho-mqtt`, and `requirements.txt`
@@ -1404,7 +1406,7 @@ flowchart LR
 **Security recap**
 - Your private key never leaves your laptop. Anyone with it, and its passphrase, can switch your pump.
 - Every open port is a promise to keep it safe. You opened 8080 for a lab; on Day 2 you will close what you no longer need.
-- Your programs run as `pelatih`, not root. Only use `sudo` for system tasks.
+- Your programs run as `student01`, not root. Only use `sudo` for system tasks.
 
 **Extra, if you finish early**
 1. **A normally-closed STOP.** Real STOP buttons are wired so a broken wire stops the machine. Leave the STOP jumper connected from pin 16 to pin 20 all the time, and treat *removing* it as pressing STOP: change `stop_button.when_pressed` to `when_released`, and the START check to refuse when the STOP jumper is *not* in place. Then cut the "wire" and see the pump stop.

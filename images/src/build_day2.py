@@ -52,7 +52,7 @@ def fig_7_1():
 def fig_8_1():
     sc = Scene()
     W, R = 130, 165
-    rows = [('pi01', '192.168.4.11'), ('pi02', '192.168.4.12'), ('pi00 (trainer)', '192.168.4.10')]
+    rows = [('student01', '192.168.4.11'), ('student02', '192.168.4.12'), ('student00 (trainer)', '192.168.4.10')]
     ex, ey = 260 + R, -260 + R
     for r, (name, ip) in enumerate(rows):
         qx, qy = r * R, r * R
@@ -95,7 +95,7 @@ def fig_12_1():
     sc.wire([(x1 + 110, y1 + 60, 25), gap_point(1, 40), (x2 + 70, y2 + 70, 14)], WIFI, 2.5, dash='7 6', under=False)
     sc.tag(*gap_point(0, 1, 30), 'browser → :1880 (eth0)', '#3c4043')
     sc.tag(*gap_point(1, 75), 'Modbus TCP (wlan0)', WIFI)
-    caption(sc, 0, ['Your laptop', 'only a web browser:', 'http://pi01.local:1880/dashboard'], IT)
+    caption(sc, 0, ['Your laptop', 'only a web browser:', 'http://student01.local:1880/dashboard'], IT)
     caption(sc, 1, ['Your Pi', 'Node-RED · Mosquitto broker ·', 'gateway.py · pump_control_mqtt.py'], GW)
     caption(sc, 2, ['ESP32 plant', 'never sees MQTT or the dashboard'], OT)
     save(sc, 'day2-fig-12-1-where-it-runs.svg')

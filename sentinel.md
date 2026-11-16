@@ -17,7 +17,7 @@ Each outpost's controller reports by radio to a **data concentrator** at the bas
 
 **Figure 1 — The exercise**
 
-![Three outposts, ALPHA, BRAVO and CHARLIE, each with a water tank, a generator and a perimeter gate, served by the ESP32 plant at 192.168.4.1 port 502 in register blocks starting at 10, 20 and 30; pi01 and pi02 each poll the ESP32 over Modbus TCP on Wi-Fi every 5 seconds](images/sentinel-fig-1-outposts.svg)
+![Three outposts, ALPHA, BRAVO and CHARLIE, each with a water tank, a generator and a perimeter gate, served by the ESP32 plant at 192.168.4.1 port 502 in register blocks starting at 10, 20 and 30; student01 and student02 each poll the ESP32 over Modbus TCP on Wi-Fi every 5 seconds](images/sentinel-fig-1-outposts.svg)
 
 ## Mission
 
