@@ -39,7 +39,7 @@ By the end of the course you will be able to:
 **Per participant**
 - Raspberry Pi 4 Model B with power supply and a microSD card (16 GB or more)
 - Single-channel relay module and 6 female-to-female jumper wires (from Day 1, Topic 6)
-- Laptop (Windows, macOS or Linux) with internet, and administrator rights to share it
+- Windows 10 or 11 laptop with internet, and administrator rights to share it (the notes assume Windows; macOS and Linux steps are given where they differ)
 - LAN cable, plus a USB-to-Ethernet adapter if your laptop has no LAN port
 
 **Software on your laptop**

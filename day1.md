@@ -6,6 +6,7 @@
 
 - [ ] Raspberry Pi 4 Model B, power supply and microSD card on your desk
 - [ ] Single-channel relay module and 6 female-to-female jumper wires (for Topic 6)
+- [ ] A Windows 10 or 11 laptop (these notes assume Windows; see the *Not on Windows?* boxes otherwise)
 - [ ] Raspberry Pi Imager 2.0 or later installed on your laptop
 - [ ] VS Code installed, with the **Remote - SSH** extension
 - [ ] A LAN cable, plus a USB-to-Ethernet adapter if your laptop has no LAN port
@@ -140,48 +141,53 @@ Your laptop stays on its own Wi-Fi for the internet, and lends that connection t
 You need a LAN cable, a USB-to-Ethernet adapter if your laptop has no LAN port, and administrator rights on your laptop. Nothing changes on the Pi: it asks for an address on its LAN port automatically.
 
 1. Connect the cable from the Pi's LAN port to your laptop.
-2. Turn on sharing on your laptop.
-
-   **Windows**
-   1. Open **Control Panel → Network and Sharing Center → Change adapter settings**.
+2. Turn on **Internet Connection Sharing** on your laptop:
+   1. Open the network adapters list: **Settings → Network & internet → Advanced network settings → More network adapter options** (Windows 10: **Control Panel → Network and Sharing Center → Change adapter settings**).
    2. Right-click your **Wi-Fi** adapter → **Properties** → **Sharing** tab.
    3. Tick **Allow other network users to connect through this computer's Internet connection**.
-   4. Under **Home networking connection**, choose your **Ethernet** adapter, then **OK**.
-
-   **macOS**
-   1. Open **System Settings → General → Sharing**, then click **(i)** next to **Internet Sharing**.
-   2. **Share your connection from:** Wi-Fi. **To devices using:** your Ethernet or USB LAN adapter.
-   3. Switch **Internet Sharing** on.
-
-   **Linux** (NetworkManager), replacing `eth0` with your laptop's LAN port name from `ip a`:
-   ```bash
-   nmcli connection add type ethernet ifname eth0 con-name share-to-pi ipv4.method shared
-   nmcli connection up share-to-pi
-   ```
+   4. Under **Home networking connection**, choose your **Ethernet** adapter (the one the cable is in), then **OK**.
 3. Power on the Pi and wait about 90 seconds; the first boot takes longer than normal.
 
-If `pi01.local` does not answer in the next step, find the Pi's address on your laptop:
+> **No Sharing tab, or it is greyed out?** Your laptop's administrator has switched Internet Connection Sharing off, which is common on managed office laptops. Tell the trainer.
 
-| Laptop | The Pi's address is in this range | How to find it |
-|---|---|---|
-| Windows | `192.168.137.x` | `arp -a`, look under `Interface: 192.168.137.1` for a `dynamic` entry |
-| macOS | `192.168.2.x` | `arp -a`, look for an entry on `bridge100` |
-| Linux | `10.42.0.x` | `ip neigh`, look for an entry on your LAN port |
+> **Sharing stopped working later?** Windows sometimes turns sharing off when the laptop joins a different Wi-Fi network. Untick and tick the box again.
+
+If `pi01.local` does not answer in the next step, find the Pi's address. In PowerShell:
+
+```powershell
+arp -a
+```
+
+Look under `Interface: 192.168.137.1` for a `dynamic` entry such as `192.168.137.45`: that is your Pi.
+
+<details>
+<summary>Not on Windows?</summary>
+
+**macOS:** **System Settings → General → Sharing**, click **(i)** next to **Internet Sharing**, share from **Wi-Fi** to your Ethernet or USB LAN adapter, and switch it on. The Pi gets a `192.168.2.x` address; `arp -a` shows it on `bridge100`.
+
+**Linux** (NetworkManager), replacing `eth0` with your LAN port name from `ip a`:
+```bash
+nmcli connection add type ethernet ifname eth0 con-name share-to-pi ipv4.method shared
+nmcli connection up share-to-pi
+```
+The Pi gets a `10.42.0.x` address; `ip neigh` shows it.
+
+</details>
 
 ### 2.3 — Connect over SSH
 
 **SSH** (Secure Shell) gives you an encrypted terminal on a remote machine.
 
-1. On your laptop, open a terminal (Windows: **PowerShell**).
+1. On your laptop, open **PowerShell**: press the **Windows** key, type `powershell`, press **Enter**. Windows 10 and 11 include the `ssh` command.
 2. Connect, using your hostname:
-   ```bash
+   ```powershell
    ssh pelatih@pi01.local
    ```
 3. The first time, type `yes` to accept the Pi's fingerprint, then your password.
 4. Your prompt changes to `pelatih@pi01:~ $`. You are now typing on the Pi.
 5. Check the internet works through your laptop: `ping -c 3 8.8.8.8`
 
-> **Error: "Could not resolve hostname"?** Your laptop cannot find the Pi by name. Use the address from the table in 2.2: `ssh pelatih@<ip-address>`.
+> **Error: "Could not resolve hostname"?** Your laptop cannot find the Pi by name. Use the address `arp -a` showed you in 2.2: `ssh pelatih@<ip-address>`.
 
 > **Error: "REMOTE HOST IDENTIFICATION HAS CHANGED"?** You reflashed the card, so the Pi has a new identity. Remove the old one with `ssh-keygen -R pi01.local` and connect again.
 
@@ -327,7 +333,7 @@ In the `ss` output, find port **22**. That is SSH, waiting for connections.
 **Try it**
 1. Ping your neighbour's Pi on the plant network: `ping -c 3 192.168.4.12` (or `.11` if you are `pi02`).
 2. **Cut the plant link.** `sudo nmcli connection down plant`. Ping the ESP32 again: it fails, but `ping 8.8.8.8` still works. The two networks really are separate. Bring it back with `sudo nmcli connection up plant`.
-3. **Break it on purpose.** Stop SSH while you are connected through it: `sudo systemctl stop ssh`. Your current session stays open, but try a *new* connection from a second laptop terminal. It is refused. A stopped service means a closed door.
+3. **Break it on purpose.** Stop SSH while you are connected through it: `sudo systemctl stop ssh`. Your current session stays open, but try a *new* connection from a second PowerShell window. It is refused. A stopped service means a closed door.
 4. **Put everything back:** `sudo systemctl start ssh`, and confirm a new connection works.
 
 **Checkpoint ✅** You can open VS Code on your Pi, the system is updated, `~/iiot/data` exists, and your Pi reaches both the internet (through `eth0`) and the ESP32 plant (through `wlan0`).
@@ -666,7 +672,7 @@ stateDiagram-v2
 
 **Goal:** close the doors you do not need. Your Pi will switch a relay this afternoon; anyone on the network who can log in to it can switch the pump.
 
-**Open:** a terminal on your **laptop** and a VS Code terminal on the Pi. Keep both open for the whole topic.
+**Open:** PowerShell on your **laptop** and a VS Code terminal on the Pi. Keep both open for the whole topic.
 
 **Figure 4.1 — The checks an incoming connection must pass after this topic**
 
@@ -707,21 +713,28 @@ sequenceDiagram
     Note over L,P: The private key never leaves the laptop
 ```
 
-1. On your **laptop**, create a key pair (press **Enter** to accept the default file, and set a passphrase):
-   ```bash
+1. On your **laptop**, in PowerShell, create a key pair. Press **Enter** to accept the default file (`C:\Users\<you>\.ssh\id_ed25519`), then set a passphrase:
+   ```powershell
    ssh-keygen -t ed25519
    ```
-2. Copy the public key to the Pi.
-
-   Windows (PowerShell):
+2. Copy the public key to the Pi (one line; it asks for the Pi password one last time):
    ```powershell
    type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh pelatih@pi01.local "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
    ```
-   macOS / Linux:
-   ```bash
-   ssh-copy-id pelatih@pi01.local
+3. Open a **new** PowerShell window and connect: `ssh pelatih@pi01.local`. It asks for your key passphrase, not the Pi password.
+4. Stop VS Code asking for the passphrase every time: let Windows' built-in SSH agent remember the key. In PowerShell **as administrator** (right-click PowerShell → **Run as administrator**):
+   ```powershell
+   Get-Service ssh-agent | Set-Service -StartupType Automatic
+   Start-Service ssh-agent
    ```
-3. Open a **new** laptop terminal and connect: `ssh pelatih@pi01.local`. It asks for your key passphrase, not the Pi password.
+   Then, in a normal PowerShell window, add your key once: `ssh-add`. From now on VS Code and `ssh` log in without asking.
+
+<details>
+<summary>Not on Windows?</summary>
+
+On macOS or Linux, step 2 is simply `ssh-copy-id pelatih@pi01.local`, and the SSH agent already runs for you.
+
+</details>
 
 ### 4.2 — Turn off password login
 
@@ -741,7 +754,7 @@ sequenceDiagram
    ```
    The second line must say `passwordauthentication no`.
 3. Restart SSH: `sudo systemctl restart ssh`. Your open sessions stay connected.
-4. From a **new** laptop terminal, log in with your key again. It must still work.
+4. From a **new** PowerShell window, log in with your key again. It must still work.
 
 > **Why `10-` in the file name?** SSH reads the files in `sshd_config.d/` in alphabetical order, and the first value it finds for a setting wins. A low number makes sure yours is read before any file the system adds.
 
@@ -786,7 +799,7 @@ sequenceDiagram
 
 **Try it**
 1. **Break it on purpose.** From your laptop, try to log in with a password only:
-   ```bash
+   ```powershell
    ssh -o PubkeyAuthentication=no pelatih@pi01.local
    ```
    You get `Permission denied (publickey)`. That is what an attacker sees.
