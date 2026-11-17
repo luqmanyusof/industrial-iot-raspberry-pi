@@ -111,13 +111,27 @@
     "groupType": "default"
   },
   {
-    "id": "ps01-g-pump",
+    "id": "ps01-g-pump1",
     "type": "ui-group",
-    "name": "Pump",
+    "name": "Pump 1",
     "page": "ps01-ui-page",
     "width": "3",
     "height": "1",
     "order": 3,
+    "showTitle": true,
+    "className": "",
+    "visible": "true",
+    "disabled": "false",
+    "groupType": "default"
+  },
+  {
+    "id": "ps01-g-pump2",
+    "type": "ui-group",
+    "name": "Pump 2",
+    "page": "ps01-ui-page",
+    "width": "3",
+    "height": "1",
+    "order": 4,
     "showTitle": true,
     "className": "",
     "visible": "true",
@@ -131,7 +145,7 @@
     "page": "ps01-ui-page",
     "width": "3",
     "height": "1",
-    "order": 4,
+    "order": 5,
     "showTitle": true,
     "className": "",
     "visible": "true",
@@ -163,7 +177,7 @@
     "id": "fn-split",
     "type": "function",
     "name": "split the reading",
-    "outputs": 5,
+    "outputs": 7,
     "timeout": 0,
     "noerr": 0,
     "initialize": "",
@@ -171,7 +185,7 @@
     "libs": [],
     "x": 360,
     "y": 80,
-    "func": "// Remember which gateway this broker belongs to (used by the pump buttons)\nflow.set('gateway', msg.topic.split('/')[1]);\n\nconst r = msg.payload;\nconst one = (v, unit) => (v === null || v === undefined) ? '\u2014' : v.toFixed(1) + unit;\nlet plant = r.status;\nif (r.e_stop) plant += ' \u00b7 E-STOP ACTIVE';\n\nreturn [\n    r.tank_level_pct === null ? null : { payload: r.tank_level_pct },              // gauge\n    r.tank_level_pct === null ? null : { topic: 'tank level', payload: r.tank_level_pct },  // chart\n    { payload: one(r.room_temp_c, ' \u00b0C') },\n    { payload: one(r.room_humidity_pct, ' %') },\n    { payload: plant },\n];",
+    "func": "// Remember which gateway this broker belongs to (used by the pump buttons)\nflow.set('gateway', msg.topic.split('/')[1]);\n\nconst r = msg.payload;\nconst one = (v, unit) => (v === null || v === undefined) ? '—' : v.toFixed(1) + unit;\nconst pump = on => (on === null || on === undefined) ? '—' : (on ? 'RUNNING' : 'stopped');\nlet plant = r.status;\nif (r.e_stop) plant += ' · E-STOP ACTIVE';\n\nreturn [\n    r.tank_level_pct === null ? null : { payload: r.tank_level_pct },              // gauge\n    r.tank_level_pct === null ? null : { topic: 'tank level', payload: r.tank_level_pct },  // chart\n    { payload: one(r.room_temp_c, ' °C') },\n    { payload: one(r.room_humidity_pct, ' %') },\n    { payload: plant },\n    { payload: pump(r.pump1_on) },\n    { payload: pump(r.pump2_on) },\n];",
     "wires": [
       [
         "gauge-level"
@@ -187,6 +201,12 @@
       ],
       [
         "txt-plant"
+      ],
+      [
+        "txt-pump1"
+      ],
+      [
+        "txt-pump2"
       ]
     ],
     "z": "ps01-tab"
@@ -469,7 +489,7 @@
         "t": "set",
         "p": "payload",
         "pt": "msg",
-        "to": "HIGH TANK LEVEL: red light and horn are on",
+        "to": "HIGH TANK LEVEL: the horn is on",
         "tot": "str"
       }
     ],
@@ -488,61 +508,14 @@
     "from": ""
   },
   {
-    "id": "in-pump",
-    "type": "mqtt in",
-    "name": "",
-    "topic": "ps01/+/pump/state",
-    "qos": "1",
-    "datatype": "json",
-    "broker": "ps01-broker",
-    "nl": false,
-    "rap": true,
-    "rh": 0,
-    "inputs": 0,
-    "x": 140,
-    "y": 440,
-    "wires": [
-      [
-        "fn-pump"
-      ]
-    ],
-    "z": "ps01-tab"
-  },
-  {
-    "id": "fn-pump",
-    "type": "function",
-    "name": "pump state",
-    "outputs": 3,
-    "timeout": 0,
-    "noerr": 0,
-    "initialize": "",
-    "finalize": "",
-    "libs": [],
-    "x": 350,
-    "y": 440,
-    "func": "const s = msg.payload;\n// Pop up a warning only when a START was refused by the interlock\nconst refused = (s.reason || '').includes('refused') ? { payload: s.reason } : null;\nreturn [\n    { payload: `${s.pump} \u00b7 door ${s.door || '?'}` },\n    { payload: s.reason },\n    refused,\n];",
-    "wires": [
-      [
-        "txt-pump"
-      ],
-      [
-        "txt-reason"
-      ],
-      [
-        "notify"
-      ]
-    ],
-    "z": "ps01-tab"
-  },
-  {
-    "id": "txt-pump",
+    "id": "txt-pump1",
     "type": "ui-text",
-    "group": "ps01-g-pump",
+    "group": "ps01-g-pump1",
     "order": 1,
     "width": 0,
     "height": 0,
-    "name": "Pump",
-    "label": "Pump",
+    "name": "Pump 1",
+    "label": "Pump 1",
     "format": "{{msg.payload}}",
     "layout": "row-spread",
     "style": false,
@@ -551,35 +524,35 @@
     "color": "#717171",
     "className": "",
     "x": 630,
-    "y": 420,
+    "y": 380,
     "wires": [],
     "z": "ps01-tab"
   },
   {
-    "id": "btn-start",
+    "id": "btn-p1-on",
     "type": "ui-button",
-    "group": "ps01-g-pump",
-    "name": "START",
-    "label": "START",
+    "group": "ps01-g-pump1",
+    "name": "PUMP 1 ON",
+    "label": "PUMP 1 ON",
     "order": 2,
     "width": "3",
     "height": "1",
     "emulateClick": false,
     "tooltip": "",
     "color": "#ffffff",
-    "bgcolor": "#188038",
+    "bgcolor": "#1a73e8",
     "className": "",
     "icon": "play",
     "iconPosition": "left",
-    "payload": "START",
+    "payload": "ON",
     "payloadType": "str",
-    "topic": "",
+    "topic": "1",
     "topicType": "str",
-    "buttonColor": "#188038",
+    "buttonColor": "#1a73e8",
     "textColor": "#ffffff",
     "iconColor": "#ffffff",
     "x": 130,
-    "y": 500,
+    "y": 420,
     "wires": [
       [
         "fn-cmd"
@@ -588,11 +561,11 @@
     "z": "ps01-tab"
   },
   {
-    "id": "btn-stop",
+    "id": "btn-p1-off",
     "type": "ui-button",
-    "group": "ps01-g-pump",
-    "name": "STOP",
-    "label": "STOP",
+    "group": "ps01-g-pump1",
+    "name": "PUMP 1 OFF",
+    "label": "PUMP 1 OFF",
     "order": 3,
     "width": "3",
     "height": "1",
@@ -603,15 +576,100 @@
     "className": "",
     "icon": "stop",
     "iconPosition": "left",
-    "payload": "STOP",
+    "payload": "OFF",
     "payloadType": "str",
-    "topic": "",
+    "topic": "1",
     "topicType": "str",
     "buttonColor": "#d93025",
     "textColor": "#ffffff",
     "iconColor": "#ffffff",
     "x": 130,
+    "y": 460,
+    "wires": [
+      [
+        "fn-cmd"
+      ]
+    ],
+    "z": "ps01-tab"
+  },
+  {
+    "id": "txt-pump2",
+    "type": "ui-text",
+    "group": "ps01-g-pump2",
+    "order": 1,
+    "width": 0,
+    "height": 0,
+    "name": "Pump 2",
+    "label": "Pump 2",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "style": false,
+    "font": "",
+    "fontSize": 16,
+    "color": "#717171",
+    "className": "",
+    "x": 630,
     "y": 540,
+    "wires": [],
+    "z": "ps01-tab"
+  },
+  {
+    "id": "btn-p2-on",
+    "type": "ui-button",
+    "group": "ps01-g-pump2",
+    "name": "PUMP 2 ON",
+    "label": "PUMP 2 ON",
+    "order": 2,
+    "width": "3",
+    "height": "1",
+    "emulateClick": false,
+    "tooltip": "",
+    "color": "#ffffff",
+    "bgcolor": "#1a73e8",
+    "className": "",
+    "icon": "play",
+    "iconPosition": "left",
+    "payload": "ON",
+    "payloadType": "str",
+    "topic": "2",
+    "topicType": "str",
+    "buttonColor": "#1a73e8",
+    "textColor": "#ffffff",
+    "iconColor": "#ffffff",
+    "x": 130,
+    "y": 580,
+    "wires": [
+      [
+        "fn-cmd"
+      ]
+    ],
+    "z": "ps01-tab"
+  },
+  {
+    "id": "btn-p2-off",
+    "type": "ui-button",
+    "group": "ps01-g-pump2",
+    "name": "PUMP 2 OFF",
+    "label": "PUMP 2 OFF",
+    "order": 3,
+    "width": "3",
+    "height": "1",
+    "emulateClick": false,
+    "tooltip": "",
+    "color": "#ffffff",
+    "bgcolor": "#d93025",
+    "className": "",
+    "icon": "stop",
+    "iconPosition": "left",
+    "payload": "OFF",
+    "payloadType": "str",
+    "topic": "2",
+    "topicType": "str",
+    "buttonColor": "#d93025",
+    "textColor": "#ffffff",
+    "iconColor": "#ffffff",
+    "x": 130,
+    "y": 620,
     "wires": [
       [
         "fn-cmd"
@@ -630,8 +688,8 @@
     "finalize": "",
     "libs": [],
     "x": 330,
-    "y": 520,
-    "func": "const gw = flow.get('gateway');\nif (!gw) {\n    node.warn('No telemetry yet, so the gateway name is unknown');\n    return null;\n}\nmsg.topic = `ps01/${gw}/pump/cmd`;\nreturn msg;",
+    "y": 500,
+    "func": "// msg.topic is the pump number (1 or 2), msg.payload is ON or OFF\nconst gw = flow.get('gateway');\nif (!gw) {\n    node.warn('No telemetry yet, so the gateway name is unknown');\n    return null;\n}\nmsg.topic = `ps01/${gw}/pump/${msg.topic}/cmd`;\nreturn msg;",
     "wires": [
       [
         "out-cmd"
@@ -653,7 +711,7 @@
     "expiry": "",
     "broker": "ps01-broker",
     "x": 530,
-    "y": 520,
+    "y": 500,
     "wires": [],
     "z": "ps01-tab"
   },
@@ -676,27 +734,6 @@
     "name": "warning",
     "x": 660,
     "y": 480,
-    "wires": [],
-    "z": "ps01-tab"
-  },
-  {
-    "id": "txt-reason",
-    "type": "ui-text",
-    "group": "ps01-g-pump",
-    "order": 4,
-    "width": 0,
-    "height": 0,
-    "name": "Last event",
-    "label": "Last event",
-    "format": "{{msg.payload}}",
-    "layout": "row-spread",
-    "style": false,
-    "font": "",
-    "fontSize": 14,
-    "color": "#717171",
-    "className": "",
-    "x": 640,
-    "y": 460,
     "wires": [],
     "z": "ps01-tab"
   }

@@ -1,7 +1,7 @@
 /*
  * PS-01 plant: a Modbus TCP field device for the Industrial IoT course.
  *
- * Runs the plant Wi-Fi access point (PS01-PLANT, 192.168.4.1) and a Modbus TCP server on port 502.
+ * Runs the plant Wi-Fi access point (plant-wifi, 192.168.4.1) and a Modbus TCP server on port 502.
  *
  *   Input registers (FC 04, read-only, value x 10)
  *     IR0  tank level      0..1000  = 0.0..100.0 %   (rotary knob)
@@ -13,14 +13,16 @@
  *     DI1  sensor fault    DHT11 did not answer
  *   Coils (FC 01 read, FC 05 write)
  *     C0   alarm horn      buzzer beeps while ON
+ *     C1   pump 1          NeoPixel 0: blue = running, red = stopped
+ *     C2   pump 2          NeoPixel 1: blue = running, red = stopped
  *   Holding registers (FC 03 read, FC 06 write)
- *     HR0  stack light     0 off, 1 green, 2 amber, 3 red
+ *     HR0  alarm state     0 NORMAL, 1 WARN, 2 HIGH (written by the gateway, shown on the OLED)
  *     HR1  outlet valve    0..100 % open (servo 0..180 degrees)
  *
  * Op SENTINEL outposts (Day 3 afternoon) use registers 10 to 33: see sentinel.h.
  *
- * Local safety wins: while the e-stop is active the valve is forced shut, the light flashes red and the
- * horn sounds, whatever the gateways write. Their writes are kept and take effect again after RESET.
+ * Local safety wins: while the e-stop is active the valve is forced shut and the horn sounds,
+ * whatever the gateways write. Their writes are kept and take effect again after RESET.
  */
 #include <Arduino.h>
 #include <WiFi.h>
@@ -34,8 +36,8 @@
 
 enum { IR_LEVEL = 0, IR_TEMP, IR_HUM, IR_UPTIME };
 enum { DI_ESTOP = 0, DI_FAULT };
-enum { C_HORN = 0 };
-enum { HR_LIGHT = 0, HR_VALVE };
+enum { C_HORN = 0, C_PUMP1, C_PUMP2 };
+enum { HR_ALARM = 0, HR_VALVE };
 
 ModbusIP mb;
 Adafruit_NeoPixel pixels(NEOPIXEL_COUNT, PIN_NEOPIXEL, NEO_GRB + NEO_KHZ800);
@@ -82,19 +84,12 @@ void readButtons() {
   mb.Ists(DI_ESTOP, estop);
 }
 
-uint32_t lightColour(uint16_t code) {
-  switch (code) {
-    case 1: return pixels.Color(0, 120, 0);     // green
-    case 2: return pixels.Color(140, 70, 0);    // amber
-    case 3: return pixels.Color(160, 0, 0);     // red
-    default: return 0;                          // off
-  }
-}
+// One lamp per pump, full scale (NEOPIXEL_BRIGHTNESS dims it): blue = running, red = stopped
+uint32_t pumpColour(bool running) { return running ? pixels.Color(0, 0, 255) : pixels.Color(255, 0, 0); }
 
 void driveOutputs() {
-  uint16_t light = mb.Hreg(HR_LIGHT);
   uint16_t valvePct = mb.Hreg(HR_VALVE);
-  if (light > 3) mb.Hreg(HR_LIGHT, light = 3);           // clamp bad writes, and show the clamped value
+  if (mb.Hreg(HR_ALARM) > 2) mb.Hreg(HR_ALARM, 2);        // clamp bad writes, and show the clamped value
   if (valvePct > 100) mb.Hreg(HR_VALVE, valvePct = 100);
   bool horn = mb.Coil(C_HORN);
 
@@ -109,8 +104,8 @@ void driveOutputs() {
     lastServoAngle = angle;
   }
 
-  uint32_t colour = estop ? (blinkOn ? lightColour(3) : 0) : lightColour(light);
-  for (int i = 0; i < NEOPIXEL_COUNT; i++) pixels.setPixelColor(i, colour);
+  pixels.setPixelColor(0, pumpColour(mb.Coil(C_PUMP1)));
+  pixels.setPixelColor(1, pumpColour(mb.Coil(C_PUMP2)));
   pixels.show();
 
   if (horn && blinkOn) tone(PIN_BUZZER, 2000);
@@ -122,13 +117,14 @@ void drawOled() {
   oled.clearBuffer();
   oled.setFont(u8g2_font_6x12_tr);
   oled.drawStr(0, 10, estop ? "PS-01  ** E-STOP **" : "PS-01  plant running");
-  snprintf(line, sizeof line, "Level  %5.1f %%", mb.Ireg(IR_LEVEL) / 10.0);
+  static const char *alarms[] = {"NORMAL", "WARN", "HIGH"};
+  snprintf(line, sizeof line, "Level %5.1f %%  %s", mb.Ireg(IR_LEVEL) / 10.0, alarms[min<uint16_t>(mb.Hreg(HR_ALARM), 2)]);
   oled.drawStr(0, 24, line);
   if (mb.Ists(DI_FAULT)) snprintf(line, sizeof line, "Temp   SENSOR FAULT");
   else snprintf(line, sizeof line, "Temp   %4.1f C  %2.0f %%", mb.Ireg(IR_TEMP) / 10.0, mb.Ireg(IR_HUM) / 10.0);
   oled.drawStr(0, 36, line);
-  static const char *names[] = {"off", "green", "amber", "red"};
-  snprintf(line, sizeof line, "Valve  %3u %%  %s", estop ? 0 : mb.Hreg(HR_VALVE), names[min<uint16_t>(mb.Hreg(HR_LIGHT), 3)]);
+  snprintf(line, sizeof line, "P1 %-3s P2 %-3s V%3u%%", mb.Coil(C_PUMP1) ? "ON" : "OFF",
+           mb.Coil(C_PUMP2) ? "ON" : "OFF", estop ? 0 : mb.Hreg(HR_VALVE));
   oled.drawStr(0, 48, line);
   snprintf(line, sizeof line, "Wi-Fi clients: %d", WiFi.softAPgetStationNum());
   oled.drawStr(0, 62, line);
@@ -142,6 +138,7 @@ void setup() {
   analogReadResolution(12);
 
   pixels.begin();
+  pixels.setBrightness(NEOPIXEL_BRIGHTNESS);
   pixels.clear();
   pixels.show();
   dht.begin();
@@ -157,9 +154,8 @@ void setup() {
   mb.server();                     // Modbus TCP on port 502
   mb.addIreg(IR_LEVEL, 0, 4);
   mb.addIsts(DI_ESTOP, false, 2);
-  mb.addCoil(C_HORN, false, 1);
-  mb.addHreg(HR_LIGHT, 1, 2);      // start: light green, valve shut
-  mb.Hreg(HR_VALVE, 0);
+  mb.addCoil(C_HORN, false, 3);    // horn, pump 1, pump 2: all off at start
+  mb.addHreg(HR_ALARM, 0, 2);      // start: alarm NORMAL, valve shut
   randomSeed(esp_random());
   sentinelBegin(mb);               // Op SENTINEL outposts, registers 10 to 33 (Day 3 afternoon)
 }

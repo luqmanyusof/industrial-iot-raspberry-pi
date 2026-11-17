@@ -151,7 +151,7 @@ def fig_2_1():
     sc.overlay.append(f'<text x="{cx:.1f}" y="{cy + 24:.1f}" font-size="14" font-weight="700" '
                       f'fill="{shade(OT, 0.42)}" text-anchor="middle">One shared ESP32 plant</text>'
                       f'<text x="{cx:.1f}" y="{cy + 42:.1f}" font-size="12.5" fill="#3c4043" '
-                      f'text-anchor="middle">Wi-Fi PS01-PLANT · 192.168.4.1</text>')
+                      f'text-anchor="middle">Wi-Fi plant-wifi · 192.168.4.1</text>')
     sc.pts += [(cx - 120, cy), (cx + 120, cy + 50)]
     save(sc, 'day1-fig-2-1-two-networks.svg')
 
@@ -220,7 +220,7 @@ def fig_5_1():
     sc.tag(*at(1, 75, 75, 95), 'student01 → student02 · POST /readings', DATA)
     sc.tag(*at(1, 120, 120, 0), 'student02 → student01 · POST /readings', '#e8710a')
     caption(sc, 0, ['student01 · 192.168.4.11', 'gateway.py and receiver.py'], OT)
-    caption(sc, 1, ['ESP32 access point', 'Wi-Fi PS01-PLANT,', 'relays the traffic'], OT)
+    caption(sc, 1, ['ESP32 access point', 'Wi-Fi plant-wifi,', 'relays the traffic'], OT)
     caption(sc, 2, ['student02 · 192.168.4.12', 'gateway.py and receiver.py'], OT)
     save(sc, 'day1-fig-5-1-pair-lab.svg')
 

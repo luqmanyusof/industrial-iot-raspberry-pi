@@ -5,6 +5,7 @@ Threads:
   sensor   : polls the plant, runs the level alarm and the alert rules, queues each reading
   store    : saves each reading, and puts it in the outbox in the same transaction
   forward  : sends the outbox to the MQTT broker, oldest first, marking each message once confirmed
+  MQTT     : (paho's own) runs pump_command() when ps01/<gateway>/pump/<n>/cmd arrives
   mailer   : hands alert emails to the mail server on this Pi
 """
 import logging
@@ -36,6 +37,17 @@ log = logging.getLogger("gateway")
 current_alarm = {"state": None}                  # latest alarm state, republished on every reconnect
 
 
+def pump_command(plant: ModbusPlant, msg: mqtt.MQTTMessage) -> None:
+    """ps01/<gateway>/pump/<1 or 2>/cmd, payload ON or OFF: switch that pump on the plant."""
+    pump = msg.topic.split("/")[3]
+    command = msg.payload.decode(errors="replace").strip().upper()
+    if pump not in ("1", "2") or command not in ("ON", "OFF"):
+        log.warning("Ignored %r on %s", command, msg.topic)
+        return
+    ok = plant.set_pump(int(pump), command == "ON")
+    log.info("Pump %s %s from remote: %s", pump, command, "done" if ok else "FAILED, plant not answering")
+
+
 def sensor_loop(plant: ModbusPlant, q: queue.Queue, stop: threading.Event, client: mqtt.Client,
                 alerts: AlertManager) -> None:
     alarm = LevelAlarm()
@@ -49,7 +61,7 @@ def sensor_loop(plant: ModbusPlant, q: queue.Queue, stop: threading.Event, clien
             state = alarm.update(reading.tank_level_pct)
             wanted = alarm.outputs(state)
             if wanted != written and plant.set_outputs(*wanted):
-                log.info("Alarm %s: light %d, horn %s", state, wanted[0], "ON" if wanted[1] else "off")
+                log.info("Alarm %s: horn %s", state, "ON" if wanted[1] else "off")
                 written = wanted
                 current_alarm["state"] = state
                 client.publish(f"{BASE}/alarm", state, qos=1, retain=True)   # state: latest only, retained
@@ -63,7 +75,8 @@ def store_loop(q: queue.Queue, stop: threading.Event) -> None:
     outbox.create_table(db)
     db.execute(
         "CREATE TABLE IF NOT EXISTS plant_readings (ts TEXT, station TEXT, gateway TEXT, "
-        "tank_level_pct REAL, room_temp_c REAL, room_humidity_pct REAL, e_stop INTEGER, status TEXT)"
+        "tank_level_pct REAL, room_temp_c REAL, room_humidity_pct REAL, e_stop INTEGER, "
+        "pump1_on INTEGER, pump2_on INTEGER, status TEXT)"
     )
     while not stop.is_set() or not q.empty():
         try:
@@ -73,7 +86,7 @@ def store_loop(q: queue.Queue, stop: threading.Event) -> None:
         with db:                                            # one transaction: both rows, or neither
             if kind == "telemetry":
                 db.execute("INSERT INTO plant_readings VALUES (:ts, :station, :gateway, :tank_level_pct, "
-                           ":room_temp_c, :room_humidity_pct, :e_stop, :status)", item)
+                           ":room_temp_c, :room_humidity_pct, :e_stop, :pump1_on, :pump2_on, :status)", item)
             outbox.add(db, f"{BASE}/{kind}", item, qos=1)
     db.close()
 
@@ -87,12 +100,17 @@ def main() -> None:
     previous = RUN_STATE.read_text().strip() if RUN_STATE.exists() else "first start"
     RUN_STATE.write_text("running")
 
+    plant = ModbusPlant(PLANT_HOST, PLANT_PORT, STATION)
+
     def on_connect(c: mqtt.Client) -> None:
         c.publish(f"{BASE}/status", "online", qos=1, retain=True)
+        for n in (1, 2):
+            c.subscribe(f"{BASE}/pump/{n}/cmd", qos=1)
         if current_alarm["state"]:
             c.publish(f"{BASE}/alarm", current_alarm["state"], qos=1, retain=True)
 
     client = make_client("gateway", will=(f"{BASE}/status", "offline"), on_connect=on_connect)
+    client.message_callback_add(f"{BASE}/pump/+/cmd", lambda c, userdata, msg: pump_command(plant, msg))
     mailer = Mailer(stop)
     alerts = AlertManager(mailer, on_event=lambda e: q.put(("events", e)))
 
@@ -108,7 +126,7 @@ def main() -> None:
 
     threads = [
         threading.Thread(target=sensor_loop, name="sensor",
-                         args=(ModbusPlant(PLANT_HOST, PLANT_PORT, STATION), q, stop, client, alerts)),
+                         args=(plant, q, stop, client, alerts)),
         threading.Thread(target=store_loop, args=(q, stop), name="store"),
         threading.Thread(target=outbox.forward_loop, args=(DB_FILE, client, stop), name="forward"),
     ]

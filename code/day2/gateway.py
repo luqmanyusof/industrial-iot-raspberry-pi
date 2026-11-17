@@ -39,7 +39,7 @@ def sensor_loop(plant: ModbusPlant, q: queue.Queue, stop: threading.Event) -> No
             wanted = alarm.outputs(state)
             if wanted != written:
                 if plant.set_outputs(*wanted):
-                    log.info("Alarm %s: light %d, horn %s", state, wanted[0], "ON" if wanted[1] else "off")
+                    log.info("Alarm %s: horn %s", state, "ON" if wanted[1] else "off")
                     written = wanted
         q.put(reading)
         stop.wait(INTERVAL_S)
@@ -49,7 +49,8 @@ def store_and_forward_loop(q: queue.Queue, stop: threading.Event) -> None:
     db = sqlite3.connect(DB_FILE)  # a connection belongs to the thread that made it
     db.execute(
         "CREATE TABLE IF NOT EXISTS plant_readings (ts TEXT, station TEXT, gateway TEXT, "
-        "tank_level_pct REAL, room_temp_c REAL, room_humidity_pct REAL, e_stop INTEGER, status TEXT)"
+        "tank_level_pct REAL, room_temp_c REAL, room_humidity_pct REAL, e_stop INTEGER, "
+        "pump1_on INTEGER, pump2_on INTEGER, status TEXT)"
     )
     session = requests.Session()
 
@@ -61,7 +62,7 @@ def store_and_forward_loop(q: queue.Queue, stop: threading.Event) -> None:
 
         db.execute(
             "INSERT INTO plant_readings VALUES (:ts, :station, :gateway, :tank_level_pct, :room_temp_c, "
-            ":room_humidity_pct, :e_stop, :status)",
+            ":room_humidity_pct, :e_stop, :pump1_on, :pump2_on, :status)",
             asdict(reading),
         )
         db.commit()

@@ -11,7 +11,6 @@
 - [ ] VS Code installed, with the **Remote - SSH** extension
 - [ ] A LAN cable, plus a USB-to-Ethernet adapter if your laptop has no LAN port
 - [ ] Administrator rights on your laptop (to share its internet with the Pi)
-- [ ] The plant Wi-Fi password (on the whiteboard)
 - [ ] Your student number from the trainer: `student01` or `student02`. It is both your Pi's name and your username.
 
 > **Your number, everywhere.** These notes show **`student01`**. If you are `student02`, use `student02` wherever you see `student01` (in commands, file paths and settings), and `192.168.4.12` wherever you see `192.168.4.11`. The trainer's Pi is `student00`.
@@ -95,7 +94,7 @@ Your Pi lives on **two networks** at once, exactly like a real gateway:
 | Side | Interface on the Pi | Connected to | Used for |
 |---|---|---|---|
 | Office side (**IT**, information technology) | `eth0`, the LAN (Local Area Network) port | Your laptop, by cable | Internet, SSH, VS Code, dashboards |
-| Plant side (**OT**, operational technology) | `wlan0`, the Wi-Fi | The ESP32 plant's own Wi-Fi network `PS01-PLANT` | Talking to plant equipment and the other Pi |
+| Plant side (**OT**, operational technology) | `wlan0`, the Wi-Fi | The ESP32 plant's own Wi-Fi network `plant-wifi` | Talking to plant equipment and the other Pi |
 
 **Figure 2.1 — Everyone builds the same station: laptop, cable and Pi, all joined to one shared plant**
 
@@ -195,7 +194,13 @@ The Pi gets a `10.42.0.x` address; `ip neigh` shows it.
 
 ### 2.4 — Join the plant network
 
-The ESP32 plant runs its own Wi-Fi network, `PS01-PLANT`. Every device on it has a fixed address, so programs can always find each other:
+The ESP32 plant runs its own Wi-Fi network:
+
+| Wi-Fi name (SSID) | Password |
+|---|---|
+| `plant-wifi` | `Plant0101` |
+
+Every device on it has a fixed address, so programs can always find each other:
 
 | Device | Plant address |
 |---|---|
@@ -209,10 +214,10 @@ The ESP32 plant runs its own Wi-Fi network, `PS01-PLANT`. Every device on it has
    sudo raspi-config nonint do_wifi_country MY
    sudo rfkill unblock wifi
    ```
-2. Create the plant connection. Use **your** address (`.11` or `.12`) and the plant Wi-Fi password from the whiteboard:
+2. Create the plant connection. Use **your** address (`.11` or `.12`):
    ```bash
-   sudo nmcli connection add type wifi ifname wlan0 con-name plant ssid PS01-PLANT \
-     wifi-sec.key-mgmt wpa-psk wifi-sec.psk 'PLANT-PASSWORD' \
+   sudo nmcli connection add type wifi ifname wlan0 con-name plant ssid plant-wifi \
+     wifi-sec.key-mgmt wpa-psk wifi-sec.psk 'Plant0101' \
      ipv4.method manual ipv4.addresses 192.168.4.11/24 ipv4.never-default yes \
      ipv6.method disabled
    sudo nmcli connection up plant
@@ -232,7 +237,7 @@ The ESP32 plant runs its own Wi-Fi network, `PS01-PLANT`. Every device on it has
    ```
    `eth0` and `wlan0` both show `connected`, and the ESP32 plant answers.
 
-> **Error: "Secrets were required, but not provided"?** The Wi-Fi password is wrong. Fix it with `sudo nmcli connection modify plant wifi-sec.psk 'PLANT-PASSWORD'`, then `sudo nmcli connection up plant`.
+> **Error: "Secrets were required, but not provided"?** The Wi-Fi password is wrong (it is case-sensitive). Fix it with `sudo nmcli connection modify plant wifi-sec.psk 'Plant0101'`, then `sudo nmcli connection up plant`.
 
 ### 2.5 — Connect VS Code
 
@@ -892,7 +897,7 @@ if __name__ == "__main__":
    python receiver.py
    ```
 
-> **Later, in production:** allow the port only from the one address that should use it: `sudo ufw allow in on wlan0 from 192.168.4.11 to any port 8080 proto tcp`.
+> **Later, in production:** allow the port only from the one address that should use it, your neighbour's (`192.168.4.12` if you are `student01`, `192.168.4.11` if you are `student02`): `sudo ufw allow in on wlan0 from 192.168.4.12 to any port 8080 proto tcp`.
 
 ### 5.3 — The gateway
 
@@ -1397,7 +1402,7 @@ flowchart LR
 ## End of Day 1 — what you should have
 
 - A Raspberry Pi named after your student number (`student01` / `student02`), updated, reachable from VS Code with an SSH key
-- On two networks: internet and SSH through your laptop's cable (`eth0`), the plant through `PS01-PLANT` (`wlan0`, `192.168.4.11` / `.12`)
+- On two networks: internet and SSH through your laptop's cable (`eth0`), the plant through `plant-wifi` (`wlan0`, `192.168.4.11` / `.12`)
 - Password login off, and a firewall allowing only SSH and mDNS from the cable side, and port 8080 from the plant side
 - `~/iiot/.venv` with `requests`, `pymodbus` and `paho-mqtt`, and `requirements.txt`
 - `~/iiot/gateway.py` running as the `gateway` service: reading, storing to `data/ps01.db` and forwarding to your neighbour

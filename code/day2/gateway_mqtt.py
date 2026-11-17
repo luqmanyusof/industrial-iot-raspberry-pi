@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""PS-01 edge gateway, Day 2 with MQTT: reads the plant over Modbus, runs the alarm, publishes over MQTT.
+"""PS-01 edge gateway, Day 2 with MQTT: reads the plant over Modbus, runs the alarm, publishes over MQTT,
+and switches pump 1 and pump 2 on the plant when a command arrives.
 
 - sensor thread  : polls the plant every INTERVAL_S seconds, updates the alarm, puts the reading on a queue
 - store thread   : saves every reading to SQLite, then publishes it to the MQTT broker
+- MQTT thread     : (paho's own) runs pump_command() when ps01/<gateway>/pump/<n>/cmd arrives
 Since Topic 9 only the forwarding changed: HTTP POST became MQTT publish.
 """
 import json
@@ -28,6 +30,17 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(threadName)s %(lev
 log = logging.getLogger("gateway")
 
 
+def pump_command(plant: ModbusPlant, msg: mqtt.MQTTMessage) -> None:
+    """ps01/<gateway>/pump/<1 or 2>/cmd, payload ON or OFF: switch that pump on the plant."""
+    pump = msg.topic.split("/")[3]
+    command = msg.payload.decode(errors="replace").strip().upper()
+    if pump not in ("1", "2") or command not in ("ON", "OFF"):
+        log.warning("Ignored %r on %s", command, msg.topic)
+        return
+    ok = plant.set_pump(int(pump), command == "ON")
+    log.info("Pump %s %s from remote: %s", pump, command, "done" if ok else "FAILED, plant not answering")
+
+
 def sensor_loop(plant: ModbusPlant, q: queue.Queue, stop: threading.Event, client: mqtt.Client) -> None:
     alarm = LevelAlarm()
     written = None                          # outputs last accepted by the plant; None = unknown
@@ -40,7 +53,7 @@ def sensor_loop(plant: ModbusPlant, q: queue.Queue, stop: threading.Event, clien
             wanted = alarm.outputs(state)
             if wanted != written:
                 if plant.set_outputs(*wanted):
-                    log.info("Alarm %s: light %d, horn %s", state, wanted[0], "ON" if wanted[1] else "off")
+                    log.info("Alarm %s: horn %s", state, "ON" if wanted[1] else "off")
                     client.publish(f"{BASE}/alarm", state, qos=1, retain=True)
                     written = wanted
         q.put(reading)
@@ -51,7 +64,8 @@ def store_and_forward_loop(q: queue.Queue, stop: threading.Event, client: mqtt.C
     db = sqlite3.connect(DB_FILE)  # a connection belongs to the thread that made it
     db.execute(
         "CREATE TABLE IF NOT EXISTS plant_readings (ts TEXT, station TEXT, gateway TEXT, "
-        "tank_level_pct REAL, room_temp_c REAL, room_humidity_pct REAL, e_stop INTEGER, status TEXT)"
+        "tank_level_pct REAL, room_temp_c REAL, room_humidity_pct REAL, e_stop INTEGER, "
+        "pump1_on INTEGER, pump2_on INTEGER, status TEXT)"
     )
     while not stop.is_set():
         try:
@@ -61,7 +75,7 @@ def store_and_forward_loop(q: queue.Queue, stop: threading.Event, client: mqtt.C
 
         db.execute(
             "INSERT INTO plant_readings VALUES (:ts, :station, :gateway, :tank_level_pct, :room_temp_c, "
-            ":room_humidity_pct, :e_stop, :status)",
+            ":room_humidity_pct, :e_stop, :pump1_on, :pump2_on, :status)",
             asdict(reading),
         )
         db.commit()
@@ -80,13 +94,19 @@ def main() -> None:
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
 
-    client = make_client("gateway", will=(f"{BASE}/status", "offline"),
-                         on_connect=lambda c: c.publish(f"{BASE}/status", "online", qos=1, retain=True))
+    plant = ModbusPlant(PLANT_HOST, PLANT_PORT, STATION)
+
+    def on_connect(c: mqtt.Client) -> None:
+        c.publish(f"{BASE}/status", "online", qos=1, retain=True)
+        for n in (1, 2):
+            c.subscribe(f"{BASE}/pump/{n}/cmd", qos=1)
+
+    client = make_client("gateway", will=(f"{BASE}/status", "offline"), on_connect=on_connect)
+    client.message_callback_add(f"{BASE}/pump/+/cmd", lambda c, userdata, msg: pump_command(plant, msg))
 
     q: queue.Queue = queue.Queue()
     threads = [
-        threading.Thread(target=sensor_loop, args=(ModbusPlant(PLANT_HOST, PLANT_PORT, STATION), q, stop, client),
-                         name="sensor"),
+        threading.Thread(target=sensor_loop, args=(plant, q, stop, client), name="sensor"),
         threading.Thread(target=store_and_forward_loop, args=(q, stop, client), name="store"),
     ]
     for t in threads:

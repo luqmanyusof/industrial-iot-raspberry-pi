@@ -19,9 +19,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger("plant_sim")
 
 # The four Modbus tables, exactly as on the ESP32
-coils = [False]                          # C0 alarm horn
+coils = [False, False, False]            # C0 alarm horn, C1 pump 1, C2 pump 2
 discrete = [False, False]                # DI0 e-stop, DI1 sensor fault
-holding = [1, 0]                         # HR0 stack light (green), HR1 valve % (shut)
+holding = [0, 0]                         # HR0 alarm (0 NORMAL), HR1 valve % (shut)
 inputs = [0, 0, 0, 0]                    # IR0 level x10, IR1 temp x10, IR2 humidity x10, IR3 uptime s
 
 ILLEGAL_FUNCTION, ILLEGAL_ADDRESS, ILLEGAL_VALUE = 1, 2, 3
@@ -67,7 +67,7 @@ def handle(pdu: bytes) -> bytes:
         addr, value = struct.unpack(">HH", pdu[1:5])
         if addr >= len(holding):
             return error(ILLEGAL_ADDRESS)
-        holding[addr] = min(value, 3 if addr == 0 else 100)  # clamp like the real plant
+        holding[addr] = min(value, 2 if addr == 0 else 100)  # clamp like the real plant
         return pdu[:5]
 
     return error(ILLEGAL_FUNCTION)
@@ -101,8 +101,9 @@ async def run_plant() -> None:
         inputs[:] = [round(max(0, min(100, level)) * 10), round(temp * 10),
                      round((65 + random.uniform(-1, 1)) * 10), int(t) & 0xFFFF]
         discrete[1] = random.random() < 0.02                            # the odd failed reading
-        log.info("level %5.1f %%  temp %4.1f C  | light %d  valve %3d %%  horn %s",
-                 inputs[0] / 10, inputs[1] / 10, holding[0], holding[1], "ON" if coils[0] else "off")
+        log.info("level %5.1f %%  temp %4.1f C  | alarm %d  pump1 %s  pump2 %s  valve %3d %%  horn %s",
+                 inputs[0] / 10, inputs[1] / 10, holding[0], "ON" if coils[1] else "off",
+                 "ON" if coils[2] else "off", holding[1], "ON" if coils[0] else "off")
         await asyncio.sleep(1)
 
 

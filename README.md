@@ -47,7 +47,7 @@ By the end of the course you will be able to:
 - [Visual Studio Code](https://code.visualstudio.com/) with the **Remote - SSH** extension
 
 **Shared, provided by the trainer**
-- The ESP32 "plant" field device. It also runs the plant's own Wi-Fi network, `PS01-PLANT`, which every Pi joins from Day 1
+- The ESP32 "plant" field device. It also runs the plant's own Wi-Fi network, `plant-wifi`, which every Pi joins from Day 1
 
 ## Repository structure
 

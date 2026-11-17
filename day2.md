@@ -99,7 +99,7 @@ This is the datasheet for our plant. Keep it open all day.
 | IR1 | Input register | `room_temp` | ÷ 10 → °C | Pump room temperature (DHT11) |
 | IR2 | Input register | `room_humidity` | ÷ 10 → % | Pump room humidity (DHT11) |
 | IR3 | Input register | `uptime` | seconds | Time since the plant started; jumps back to 0 after a restart |
-| DI0 | Discrete input | `e_stop` | — | 1 = emergency stop active (red button on the plant) |
+| DI0 | Discrete input | `e_stop` | — | 1 = emergency stop active (the plant's E-STOP button, D34) |
 | DI1 | Discrete input | `sensor_fault` | — | 1 = the DHT11 did not answer |
 | C0 | Coil | `alarm_horn` | — | 1 = horn sounds |
 | HR0 | Holding register | `stack_light` | 0–3 | 0 off, 1 green, 2 amber, 3 red |

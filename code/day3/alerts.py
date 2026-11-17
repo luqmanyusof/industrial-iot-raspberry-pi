@@ -30,7 +30,7 @@ class Rule:
 
 RULES = [
     Rule("HIGH_LEVEL", "High tank level", lambda r, a: a == "HIGH", 0,
-         lambda r: f"Tank level {r.tank_level_pct:.1f} %. Red light and horn are on."),
+         lambda r: f"Tank level {r.tank_level_pct:.1f} %. The horn is on."),
     Rule("E_STOP", "Emergency stop active", lambda r, a: r.e_stop is True, 0,
          lambda r: "The plant's E-STOP is pressed: valve forced shut."),
     Rule("PLANT_LOST", "Plant not answering", lambda r, a: r.status == "COMMS_FAULT", 60,

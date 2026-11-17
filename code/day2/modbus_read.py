@@ -5,7 +5,7 @@ import sys
 
 from pymodbus.client import ModbusTcpClient
 
-LIGHTS = {0: "off", 1: "green", 2: "amber", 3: "red"}
+ALARMS = {0: "NORMAL", 1: "WARN", 2: "HIGH"}
 
 
 def main() -> None:
@@ -20,7 +20,7 @@ def main() -> None:
 
     ir = client.read_input_registers(0, count=4)       # FC 04
     di = client.read_discrete_inputs(0, count=2)       # FC 02
-    co = client.read_coils(0, count=1)                 # FC 01
+    co = client.read_coils(0, count=3)                 # FC 01
     hr = client.read_holding_registers(0, count=2)     # FC 03
     client.close()
 
@@ -37,7 +37,9 @@ def main() -> None:
     print(f"{'DI0':<6} {'e_stop':<14} {int(di.bits[0]):>6}  {'ACTIVE' if di.bits[0] else 'clear'}")
     print(f"{'DI1':<6} {'sensor_fault':<14} {int(di.bits[1]):>6}  {'FAULT' if di.bits[1] else 'ok'}")
     print(f"{'C0':<6} {'alarm_horn':<14} {int(co.bits[0]):>6}  {'ON' if co.bits[0] else 'off'}")
-    print(f"{'HR0':<6} {'stack_light':<14} {hr.registers[0]:>6}  {LIGHTS.get(hr.registers[0], '?')}")
+    print(f"{'C1':<6} {'pump1':<14} {int(co.bits[1]):>6}  {'RUNNING (blue)' if co.bits[1] else 'stopped (red)'}")
+    print(f"{'C2':<6} {'pump2':<14} {int(co.bits[2]):>6}  {'RUNNING (blue)' if co.bits[2] else 'stopped (red)'}")
+    print(f"{'HR0':<6} {'alarm':<14} {hr.registers[0]:>6}  {ALARMS.get(hr.registers[0], '?')}")
     print(f"{'HR1':<6} {'valve':<14} {hr.registers[1]:>6}  {hr.registers[1]} % open")
 
 
