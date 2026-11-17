@@ -47,8 +47,8 @@ def fig_1_1():
     sc.wire([at(1, 105, 50, 12), gap_point(1, 30), at(2, 50, 60, 30)], CABLE, 3.5, under=False, arrow='end')
     sc.tag(*gap_point(0, 85), 'Modbus TCP (Day 2)', WIFI)
     sc.tag(*gap_point(1, 70), 'HTTP today, MQTT on Day 2', CABLE)
-    caption(sc, 0, ['Stesen Pam PS-01 (the plant)', 'ESP32 field device: tank level,', 'e-stop, stack light, alarm'], OT)
-    caption(sc, 1, ['Gateway', 'Raspberry Pi edge gateway, with', 'the door switch (a jumper) and', 'pump relay on its GPIO'],
+    caption(sc, 0, ['Stesen Pam PS-01 (the plant)', 'ESP32 field device: tank level,', 'pump 1 and pump 2, e-stop, alarm'], OT)
+    caption(sc, 1, ['Gateway', 'Raspberry Pi edge gateway; a door', 'switch (a jumper) and a relay on', 'its GPIO for practice'],
             GW)
     caption(sc, 2, ['Operators and servers', 'dashboards and history;', 'commands come back down'], IT)
     save(sc, 'day1-fig-1-1-system.svg')

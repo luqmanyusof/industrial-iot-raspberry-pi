@@ -78,8 +78,8 @@ def fig_8_1():
     save(sc, 'day2-fig-8-1-polling.svg')
 
 
-# ---------- Figure 12.1: where everything runs ----------
-def fig_12_1():
+# ---------- Figure 11.1: where everything runs ----------
+def fig_11_1():
     sc = Scene()
     IT = '#dfe9fb'
     plate(sc, 0, IT); plate(sc, 1, GW); plate(sc, 2, OT)
@@ -96,12 +96,12 @@ def fig_12_1():
     sc.tag(*gap_point(0, 1, 30), 'browser → :1880 (eth0)', '#3c4043')
     sc.tag(*gap_point(1, 75), 'Modbus TCP (wlan0)', WIFI)
     caption(sc, 0, ['Your laptop', 'only a web browser:', 'http://student01.local:1880/dashboard'], IT)
-    caption(sc, 1, ['Your Pi', 'Node-RED · Mosquitto broker ·', 'gateway.py · pump_control_mqtt.py'], GW)
+    caption(sc, 1, ['Your Pi', 'Node-RED · Mosquitto broker ·', 'gateway.py'], GW)
     caption(sc, 2, ['ESP32 plant', 'never sees MQTT or the dashboard'], OT)
-    save(sc, 'day2-fig-12-1-where-it-runs.svg')
+    save(sc, 'day2-fig-11-1-where-it-runs.svg')
 
 
 if __name__ == '__main__':
     fig_7_1()
     fig_8_1()
-    fig_12_1()
+    fig_11_1()

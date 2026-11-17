@@ -4,15 +4,16 @@ import getpass
 import logging
 import queue
 import smtplib
+import socket
 import threading
 import time
 from dataclasses import dataclass
 from email.message import EmailMessage
 from typing import Callable
 
-from mqtt_link import GATEWAY
-
 log = logging.getLogger("alerts")
+
+GATEWAY = socket.gethostname()
 
 MAIL_TO = getpass.getuser()                 # the user running the gateway, e.g. student01 -> /var/mail/student01
 MAIL_FROM = f"ps01-{GATEWAY}@localhost"

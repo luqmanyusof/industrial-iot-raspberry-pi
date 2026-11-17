@@ -156,7 +156,7 @@ class Scene:
                f'width="{w * zoom:.0f}" height="{h * zoom:.0f}" font-family="{FONT}">'
                f'<rect x="{x0:.0f}" y="{y0:.0f}" width="{w:.0f}" height="{h:.0f}" rx="14" fill="#ffffff"/>'
                f'{t}{body}</svg>\n')
-        open(path, 'w').write(svg)
+        open(path, 'w', encoding='utf-8', newline='\n').write(svg)   # UTF-8 on Windows too
 
 
 # ======================= icons (anchor = world x, y on the floor) =======================

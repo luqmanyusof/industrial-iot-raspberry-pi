@@ -1,7 +1,0 @@
-{
-  "host": "localhost",
-  "port": 1883,
-  "logins": {
-    "gateway": {"username": "gateway", "password": "GATEWAY-PASSWORD"}
-  }
-}

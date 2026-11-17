@@ -11,6 +11,7 @@ Threads:
 import logging
 import queue
 import signal
+import socket
 import sqlite3
 import threading
 from dataclasses import asdict
@@ -21,12 +22,14 @@ import paho.mqtt.client as mqtt
 
 import outbox
 from alerts import AlertManager, Mailer
-from mqtt_link import BASE, GATEWAY, make_client
 from plant import LevelAlarm, ModbusPlant
 
 STATION = "PS-01"
 INTERVAL_S = 2
 PLANT_HOST, PLANT_PORT = "192.168.4.1", 502      # simulator: "127.0.0.1", 5020
+BROKER = "localhost"                             # Mosquitto, on this Pi
+GATEWAY = socket.gethostname()
+BASE = f"ps01/{GATEWAY}"                         # every topic this Pi uses starts here
 DATA_DIR = Path.home() / "iiot" / "data"
 DB_FILE = DATA_DIR / "ps01.db"
 RUN_STATE = DATA_DIR / "gateway.state"           # "running" while up, "stopped" after a clean stop
@@ -35,6 +38,25 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(threadName)s %(lev
 log = logging.getLogger("gateway")
 
 current_alarm = {"state": None}                  # latest alarm state, republished on every reconnect
+
+
+def connect_mqtt(plant: ModbusPlant) -> mqtt.Client:
+    """Same as Day 2, plus: republish the latest alarm on every reconnect."""
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"{GATEWAY}-gateway")
+    client.will_set(f"{BASE}/status", "offline", qos=1, retain=True)
+
+    def on_connect(c, userdata, flags, reason_code, properties):
+        log.info("MQTT connected to %s: %s", BROKER, reason_code)
+        c.publish(f"{BASE}/status", "online", qos=1, retain=True)
+        c.subscribe(f"{BASE}/pump/+/cmd", qos=1)
+        if current_alarm["state"]:
+            c.publish(f"{BASE}/alarm", current_alarm["state"], qos=1, retain=True)
+
+    client.on_connect = on_connect
+    client.on_message = lambda c, userdata, msg: pump_command(plant, msg)
+    client.connect_async(BROKER, 1883, keepalive=10)
+    client.loop_start()
+    return client
 
 
 def pump_command(plant: ModbusPlant, msg: mqtt.MQTTMessage) -> None:
@@ -93,6 +115,8 @@ def store_loop(q: queue.Queue, stop: threading.Event) -> None:
 
 def main() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(DB_FILE, timeout=10) as db:   # set up the outbox once, before two threads open the file
+        outbox.create_table(db)
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
     q: queue.Queue = queue.Queue()
@@ -101,16 +125,7 @@ def main() -> None:
     RUN_STATE.write_text("running")
 
     plant = ModbusPlant(PLANT_HOST, PLANT_PORT, STATION)
-
-    def on_connect(c: mqtt.Client) -> None:
-        c.publish(f"{BASE}/status", "online", qos=1, retain=True)
-        for n in (1, 2):
-            c.subscribe(f"{BASE}/pump/{n}/cmd", qos=1)
-        if current_alarm["state"]:
-            c.publish(f"{BASE}/alarm", current_alarm["state"], qos=1, retain=True)
-
-    client = make_client("gateway", will=(f"{BASE}/status", "offline"), on_connect=on_connect)
-    client.message_callback_add(f"{BASE}/pump/+/cmd", lambda c, userdata, msg: pump_command(plant, msg))
+    client = connect_mqtt(plant)
     mailer = Mailer(stop)
     alerts = AlertManager(mailer, on_event=lambda e: q.put(("events", e)))
 

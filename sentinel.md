@@ -76,7 +76,7 @@ Note each outpost's fuel and water now. Which one will need attention first?
 
 ### 2 — Plan
 
-On paper, before any code (Day 3, Topic 13):
+On paper, before any code (Day 3, Topic 12):
 - Your **topic names**. Suggested: `sentinel/<outpost>/telemetry`, `sentinel/<outpost>/link` (`up` or `lost`, retained), `sentinel/<outpost>/events`.
 - Your **alert rules**: what, for which outpost, after how long.
 - What your node does when **one** outpost stops answering, and when the **broker** stops.
@@ -90,20 +90,13 @@ Write `~/iiot/sentinel_node.py`:
 
 ### 4 — Publish without losing anything
 
-- Put every reading in an outbox and forward it. *Built on:* `outbox.py` (Day 3, Topic 14): reuse it as it is.
+- Put every reading in an outbox and forward it. *Built on:* `outbox.py` (Day 3, Topic 13): reuse it as it is.
 - Publish each outpost's link state (`up` / `lost`) straight to the broker, **retained**. It is state, not history.
-- Allow your new topics in the broker's ACL (Day 2, Topic 11), then `sudo systemctl restart mosquitto`:
-  ```conf
-  # in /etc/mosquitto/acl, under user gateway:
-  topic write sentinel/#
-  # under user dashboard:
-  topic read sentinel/#
-  ```
-- Check with `mosquitto_sub -h localhost -t 'sentinel/#' -v -u dashboard -P '<password>'`.
+- Check with `mosquitto_sub -h localhost -t 'sentinel/#' -v`.
 
 ### 5 — Alert the duty officer
 
-Email through Postfix on your Pi (Day 3, Topic 15). *Built on:* `alerts.py`: reuse the `Mailer` as it is, and adapt the rule checking so each rule runs **per outpost**. At least:
+Email through Postfix on your Pi (Day 3, Topic 14). *Built on:* `alerts.py`: reuse the `Mailer` as it is, and adapt the rule checking so each rule runs **per outpost**. At least:
 
 | Alert | Raised when | Suggested wait |
 |---|---|---|
@@ -116,7 +109,7 @@ Put the outpost's name in every subject line, for example `[SENTINEL CHARLIE] RA
 
 ### 6 — The common operating picture
 
-In Node-RED (Day 2, Topic 12), build a page `/sentinel` with **one group per outpost**, each showing fuel and water gauges, shelter temperature, generator, gate and link. *Built on:* the PS-01 flow: an `mqtt in` on `sentinel/+/telemetry`, then a function or a switch node that sends each outpost's values to its own widgets (`msg.topic.split('/')[1]` is the outpost's name).
+In Node-RED (Day 2, Topic 11), build a page `/sentinel` with **one group per outpost**, each showing fuel and water gauges, shelter temperature, generator, gate and link. *Built on:* the PS-01 flow: an `mqtt in` on `sentinel/+/telemetry`, then a function or a switch node that sends each outpost's values to its own widgets (`msg.topic.split('/')[1]` is the outpost's name).
 
 Make the link state impossible to miss: an outpost showing old values without saying it is `lost` would be lying to the duty officer.
 

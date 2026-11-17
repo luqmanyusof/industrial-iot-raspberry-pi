@@ -2,6 +2,7 @@
 """Store-and-forward: every message waits in an SQLite outbox until the broker has confirmed it."""
 import json
 import logging
+import socket
 import sqlite3
 import threading
 import time
@@ -10,9 +11,9 @@ from pathlib import Path
 
 import paho.mqtt.client as mqtt
 
-from mqtt_link import GATEWAY
-
 log = logging.getLogger("outbox")
+
+GATEWAY = socket.gethostname()
 
 BATCH = 20                 # messages read from the outbox at a time
 RATE_PER_S = 20            # catch up after an outage, but do not flood the broker

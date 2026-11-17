@@ -1,7 +1,7 @@
 # Day 2 — Interfacing with the Physical World
 
 > **Today the gateway meets the plant:** you learn how field devices really connect, talk to the PS-01 plant over Modbus by hand, then teach your gateway to read it and raise an alarm, before moving the data over MQTT to an operator dashboard.
-> **Carry-over:** from Day 1 you need your Pi on both networks (Topic 2), the `gateway` service running, and `pump_control.py` passing its test sheet.
+> **Carry-over:** from Day 1 you need your Pi on both networks (Topic 2) and the `gateway` service running.
 
 ## Before you start
 
@@ -87,7 +87,7 @@ flowchart LR
 > 1. **Addresses.** Many documents number registers from 1 with a table prefix: `30001` is input register 0, `40001` is holding register 0. In code you use the plain address starting at 0.
 > 2. **Scaling.** Registers hold whole numbers only. A temperature of 28.5 °C is sent as `285`, with "× 10" written in the datasheet. Forget to divide and your pump room is at 285 °C.
 
-> **Modbus has no security at all.** No password, no encryption: anyone who can reach port 502 can read every value and write every output. This is why the plant has its own network and your gateway is the only machine on both sides. You will secure the data that leaves the gateway in Topic 11.
+> **Modbus has no security at all.** No password, no encryption: anyone who can reach port 502 can read every value and write every output. This is why the plant has its own network and your gateway is the only machine on both sides.
 
 ### 7.3 — The PS-01 register map
 
@@ -102,10 +102,12 @@ This is the datasheet for our plant. Keep it open all day.
 | DI0 | Discrete input | `e_stop` | — | 1 = emergency stop active (the plant's E-STOP button, D34) |
 | DI1 | Discrete input | `sensor_fault` | — | 1 = the DHT11 did not answer |
 | C0 | Coil | `alarm_horn` | — | 1 = horn sounds |
-| HR0 | Holding register | `stack_light` | 0–3 | 0 off, 1 green, 2 amber, 3 red |
+| C1 | Coil | `pump1` | — | 1 = pump 1 running: the plant's LED 0 turns **blue** (red = stopped) |
+| C2 | Coil | `pump2` | — | 1 = pump 2 running: the plant's LED 1 turns **blue** (red = stopped) |
+| HR0 | Holding register | `alarm` | 0–2 | Alarm state written by the gateway: 0 NORMAL, 1 WARN, 2 HIGH. The plant shows it on its OLED screen |
 | HR1 | Holding register | `valve` | % | Outlet valve, 0 (shut) to 100 (fully open) |
 
-The plant has one rule of its own: **while the e-stop is active, it shuts the valve, flashes red and sounds the horn, whatever the gateways write.** The local safety function wins over every remote command.
+The plant has one rule of its own: **while the e-stop is active, it shuts the valve and sounds the horn, whatever the gateways write.** The local safety function wins over every remote command.
 
 **Figure 7.3 — One poll, one command, and what silence looks like**
 
@@ -131,6 +133,7 @@ Using only the register map, write down the function code, table and address you
 2. Check whether someone pressed the e-stop.
 3. Open the valve halfway.
 4. Silence the horn.
+5. Start pump 2.
 
 <details>
 <summary>Answers</summary>
@@ -139,6 +142,7 @@ Using only the register map, write down the function code, table and address you
 2. FC 02, discrete input 0.
 3. FC 06, holding register 1, value 50.
 4. FC 05, coil 0, value off.
+5. FC 05, coil 2, value on.
 
 </details>
 
@@ -179,7 +183,7 @@ import sys
 
 from pymodbus.client import ModbusTcpClient
 
-LIGHTS = {0: "off", 1: "green", 2: "amber", 3: "red"}
+ALARMS = {0: "NORMAL", 1: "WARN", 2: "HIGH"}
 
 
 def main() -> None:
@@ -194,7 +198,7 @@ def main() -> None:
 
     ir = client.read_input_registers(0, count=4)       # FC 04
     di = client.read_discrete_inputs(0, count=2)       # FC 02
-    co = client.read_coils(0, count=1)                 # FC 01
+    co = client.read_coils(0, count=3)                 # FC 01
     hr = client.read_holding_registers(0, count=2)     # FC 03
     client.close()
 
@@ -211,7 +215,9 @@ def main() -> None:
     print(f"{'DI0':<6} {'e_stop':<14} {int(di.bits[0]):>6}  {'ACTIVE' if di.bits[0] else 'clear'}")
     print(f"{'DI1':<6} {'sensor_fault':<14} {int(di.bits[1]):>6}  {'FAULT' if di.bits[1] else 'ok'}")
     print(f"{'C0':<6} {'alarm_horn':<14} {int(co.bits[0]):>6}  {'ON' if co.bits[0] else 'off'}")
-    print(f"{'HR0':<6} {'stack_light':<14} {hr.registers[0]:>6}  {LIGHTS.get(hr.registers[0], '?')}")
+    print(f"{'C1':<6} {'pump1':<14} {int(co.bits[1]):>6}  {'RUNNING (blue)' if co.bits[1] else 'stopped (red)'}")
+    print(f"{'C2':<6} {'pump2':<14} {int(co.bits[2]):>6}  {'RUNNING (blue)' if co.bits[2] else 'stopped (red)'}")
+    print(f"{'HR0':<6} {'alarm':<14} {hr.registers[0]:>6}  {ALARMS.get(hr.registers[0], '?')}")
     print(f"{'HR1':<6} {'valve':<14} {hr.registers[1]:>6}  {hr.registers[1]} % open")
 
 
@@ -249,14 +255,15 @@ All three Pis now poll the same ESP32 at the same time. A Modbus TCP server keep
 
 ### 8.4 — Write commands
 
-`modbus_write.py` sets the stack light, the valve and the horn:
+`modbus_write.py` switches the two pumps, sets the valve and sounds the horn:
 
 ```python
 #!/usr/bin/env python3
-"""Command the PS-01 plant: stack light, outlet valve, alarm horn.
+"""Command the PS-01 plant: pump 1, pump 2, outlet valve, alarm horn.
 
 Examples:
-  python modbus_write.py --light red
+  python modbus_write.py --pump1 on
+  python modbus_write.py --pump2 off
   python modbus_write.py --valve 40
   python modbus_write.py --horn on
 """
@@ -265,14 +272,13 @@ import sys
 
 from pymodbus.client import ModbusTcpClient
 
-LIGHTS = {"off": 0, "green": 1, "amber": 2, "red": 3}
-
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--host", default="192.168.4.1")
     parser.add_argument("--port", type=int, default=502)
-    parser.add_argument("--light", choices=LIGHTS)
+    parser.add_argument("--pump1", choices=["on", "off"])
+    parser.add_argument("--pump2", choices=["on", "off"])
     parser.add_argument("--valve", type=int, metavar="0-100")
     parser.add_argument("--horn", choices=["on", "off"])
     args = parser.parse_args()
@@ -282,12 +288,14 @@ def main() -> None:
         sys.exit(f"Cannot connect to {args.host}:{args.port}")
 
     results = []
-    if args.light:
-        results.append(("stack light", client.write_register(0, LIGHTS[args.light])))     # FC 06, HR0
+    if args.pump1:
+        results.append(("pump 1", client.write_coil(1, args.pump1 == "on")))             # FC 05, C1
+    if args.pump2:
+        results.append(("pump 2", client.write_coil(2, args.pump2 == "on")))             # FC 05, C2
     if args.valve is not None:
-        results.append(("valve", client.write_register(1, args.valve)))                   # FC 06, HR1
+        results.append(("valve", client.write_register(1, args.valve)))                  # FC 06, HR1
     if args.horn:
-        results.append(("horn", client.write_coil(0, args.horn == "on")))                 # FC 05, C0
+        results.append(("horn", client.write_coil(0, args.horn == "on")))                # FC 05, C0
     client.close()
 
     for name, resp in results:
@@ -298,20 +306,20 @@ if __name__ == "__main__":
     main()
 ```
 
-1. Change the stack light and open the valve. Watch the plant: the light changes and the servo turns.
+1. Start pump 1 and open the valve. Watch the plant: LED 0 turns from red to blue, and the servo turns.
    ```bash
-   python modbus_write.py --light amber
+   python modbus_write.py --pump1 on
    python modbus_write.py --valve 40
    ```
-2. Read everything back with `python modbus_read.py`.
-3. Put the plant back: `python modbus_write.py --light green --valve 0`
+2. Start pump 2 as well (`--pump2 on`), then read everything back with `python modbus_read.py`.
+3. Put the plant back: `python modbus_write.py --pump1 off --pump2 off --valve 0`
 
 **Try it**
 1. **Local safety wins.** Open the valve to 60 %, then ask the trainer to press the plant's **E-STOP** button (D34). Read the registers: `e_stop` is `ACTIVE` and `valve` still says `60`, but the servo has shut and the horn sounds. Write `--valve 80`: the register changes, the servo does not move. Now press **RESET** (D35): the valve opens to 80 %. The plant obeys the gateways only while its own safety allows it.
 2. **Who has control?** With your neighbour, take turns writing different valve positions (`--valve 20`, `--valve 80`) and watch the servo. The plant obeys whoever wrote last; it has no idea there are two of you. In a real plant, each output has exactly one controller. Discuss: how would you decide who that is, and how would you hand over control?
 3. **A value out of range.** `python modbus_write.py --valve 140`, then read it back. The plant clamped it to 100. Well-behaved field devices check what they are given; never rely on it.
 4. **Nobody home.** `python modbus_read.py --host 192.168.4.99`. After the 2-second timeout you get `Cannot connect`. This is what a dead or out-of-range device looks like to a gateway.
-5. **Put everything back:** `python modbus_write.py --light green --valve 0 --horn off`
+5. **Put everything back:** `python modbus_write.py --pump1 off --pump2 off --valve 0 --horn off`
 
 **Checkpoint ✅** You can read the plant's tank level and write its valve from Python, and explain why the valve stays shut during an e-stop.
 
@@ -319,7 +327,7 @@ if __name__ == "__main__":
 
 ## Topic 9 — Modbus in the gateway
 
-**Goal:** swap the simulated sensors in your Day 1 gateway for the real plant, add a high-level alarm that drives the stack light and the horn, and make sure a lost plant becomes a recorded fault, not a crash.
+**Goal:** swap the simulated sensors in your Day 1 gateway for the real plant, add a high-level alarm that the plant shows on its screen and sounds on its horn, and make sure a lost plant becomes a recorded fault, not a crash.
 
 **Open:** VS Code on your Pi, folder `~/iiot`.
 
@@ -362,9 +370,10 @@ flowchart LR
 
 ```python
 #!/usr/bin/env python3
-"""The PS-01 plant over Modbus TCP: one class that reads it and one that decides the alarm."""
+"""The PS-01 plant over Modbus TCP: one class that reads and commands it, one that decides the alarm."""
 import logging
 import socket
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -373,7 +382,7 @@ from pymodbus.exceptions import ModbusException
 
 log = logging.getLogger("plant")
 
-LIGHT_OFF, LIGHT_GREEN, LIGHT_AMBER, LIGHT_RED = 0, 1, 2, 3
+ALARM_CODES = {"NORMAL": 0, "WARN": 1, "HIGH": 2}   # HR0: shown on the plant's OLED
 
 
 @dataclass
@@ -385,32 +394,43 @@ class Reading:
     room_temp_c: float | None
     room_humidity_pct: float | None
     e_stop: bool | None
+    pump1_on: bool | None
+    pump2_on: bool | None
     status: str                 # OK, SENSOR_FAULT or COMMS_FAULT
 
 
 class ModbusPlant:
-    """Reads the plant's registers and writes its outputs. Same read() as Day 1's simulator."""
+    """Reads the plant's registers and writes its outputs. Same read() as Day 1's simulator.
+
+    One Modbus connection, used by two threads (polling, and pump commands from MQTT): a lock
+    makes sure only one of them talks to the plant at a time.
+    """
 
     def __init__(self, host: str, port: int = 502, station: str = "PS-01"):
         self.station = station
         self.gateway = socket.gethostname()
         self.client = ModbusTcpClient(host, port=port, timeout=1, retries=1)
+        self.lock = threading.Lock()
 
     def _now(self) -> str:
         return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
     def read(self) -> Reading:
         try:
-            if not self.client.connected:
-                self.client.connect()
-            ir = self.client.read_input_registers(0, count=4)      # level, temp, humidity, uptime
-            di = self.client.read_discrete_inputs(0, count=2)      # e-stop, sensor fault
-            if ir.isError() or di.isError():
-                raise ModbusException(f"plant answered with an error: {ir if ir.isError() else di}")
+            with self.lock:
+                if not self.client.connected:
+                    self.client.connect()
+                ir = self.client.read_input_registers(0, count=4)  # level, temp, humidity, uptime
+                di = self.client.read_discrete_inputs(0, count=2)  # e-stop, sensor fault
+                co = self.client.read_coils(0, count=3)            # horn, pump 1, pump 2
+            for resp in (ir, di, co):
+                if resp.isError():
+                    raise ModbusException(f"plant answered with an error: {resp}")
         except (ModbusException, OSError) as err:
             log.warning("Plant not answering: %s", err)
             self.client.close()                                    # start clean next time
-            return Reading(self._now(), self.station, self.gateway, None, None, None, None, "COMMS_FAULT")
+            return Reading(self._now(), self.station, self.gateway, None, None, None, None, None, None,
+                           "COMMS_FAULT")
 
         level, temp, hum, _uptime = ir.registers
         e_stop, sensor_fault = di.bits[0], di.bits[1]
@@ -422,17 +442,32 @@ class ModbusPlant:
             room_temp_c=None if sensor_fault else temp / 10,
             room_humidity_pct=None if sensor_fault else hum / 10,
             e_stop=e_stop,
+            pump1_on=co.bits[1],
+            pump2_on=co.bits[2],
             status="SENSOR_FAULT" if sensor_fault else "OK",
         )
 
-    def set_outputs(self, light: int, horn: bool) -> bool:
-        """Write the stack light and the horn. Returns False if the plant did not accept it."""
+    def set_outputs(self, alarm_code: int, horn: bool) -> bool:
+        """Write the alarm state and the horn. Returns False if the plant did not accept it."""
         try:
-            r1 = self.client.write_register(0, light)               # HR0
-            r2 = self.client.write_coil(0, horn)                    # C0
+            with self.lock:
+                r1 = self.client.write_register(0, alarm_code)     # HR0
+                r2 = self.client.write_coil(0, horn)               # C0
             return not (r1.isError() or r2.isError())
         except (ModbusException, OSError) as err:
             log.warning("Could not write outputs: %s", err)
+            return False
+
+    def set_pump(self, pump: int, on: bool) -> bool:
+        """Start (on=True) or stop pump 1 or 2. Returns False if the plant did not accept it."""
+        try:
+            with self.lock:
+                if not self.client.connected:
+                    self.client.connect()
+                resp = self.client.write_coil(pump, on)            # C1 = pump 1, C2 = pump 2
+            return not resp.isError()
+        except (ModbusException, OSError) as err:
+            log.warning("Could not switch pump %d: %s", pump, err)
             return False
 
 
@@ -456,16 +491,18 @@ class LevelAlarm:
 
     @staticmethod
     def outputs(state: str) -> tuple[int, bool]:
-        """(stack light, horn) for each alarm state."""
-        return {"NORMAL": (LIGHT_GREEN, False), "WARN": (LIGHT_AMBER, False), "HIGH": (LIGHT_RED, True)}[state]
+        """(alarm code for HR0, horn) for each alarm state. Only HIGH sounds the horn."""
+        return ALARM_CODES[state], state == "HIGH"
 ```
 
 | Piece | What it does |
 |---|---|
 | `Reading` | Same idea as Day 1, with the plant's fields. A value the plant could not give is `None`, never a made-up number |
-| `ModbusPlant.read()` | Two requests (FC 04 and FC 02), scaled. Any Modbus or network error becomes a `COMMS_FAULT` reading |
+| `ModbusPlant.read()` | Three requests (FC 04 measurements, FC 02 e-stop and fault, FC 01 pump states), scaled. Any Modbus or network error becomes a `COMMS_FAULT` reading |
 | `self.client.close()` after an error | Drop the broken connection, so the next poll starts clean |
-| `set_outputs()` | FC 06 for the light, FC 05 for the horn; returns `False` if the plant did not accept it |
+| `set_outputs()` | FC 06 for the alarm state, FC 05 for the horn; returns `False` if the plant did not accept it |
+| `set_pump()` | FC 05 to coil 1 or 2. You use it from MQTT in Topic 10 |
+| `self.lock` | From Topic 10 two threads share this one connection; the lock lets only one talk to the plant at a time |
 | `LevelAlarm` | Decides NORMAL, WARN or HIGH from the level, with hysteresis (9.2) |
 
 In `gateway.py`, the threads, queue, SQLite and HTTP forwarding are exactly as on Day 1. These parts changed:
@@ -487,7 +524,7 @@ def sensor_loop(plant: ModbusPlant, q: queue.Queue, stop: threading.Event) -> No
             wanted = alarm.outputs(state)
             if wanted != written:
                 if plant.set_outputs(*wanted):
-                    log.info("Alarm %s: light %d, horn %s", state, wanted[0], "ON" if wanted[1] else "off")
+                    log.info("Alarm %s: horn %s", state, "ON" if wanted[1] else "off")
                     written = wanted
         q.put(reading)
         stop.wait(INTERVAL_S)
@@ -505,18 +542,18 @@ def sensor_loop(plant: ModbusPlant, q: queue.Queue, stop: threading.Event) -> No
 
 A level hovering around 90 % would switch the alarm on and off every few seconds if there were only one limit. Operators stop trusting a flickering alarm. **Hysteresis** uses two limits: one to raise the alarm, a lower one to clear it.
 
-| State | Raised at | Cleared below | Stack light | Horn |
+| State | Raised at | Cleared below | Plant's OLED | Horn |
 |---|---|---|---|---|
-| NORMAL | — | — | green | off |
-| WARN | 80 % | 75 % | amber | off |
-| HIGH | 90 % | 85 % | red | **on** |
+| NORMAL | — | — | `NORMAL` | off |
+| WARN | 80 % | 75 % | `WARN` | off |
+| HIGH | 90 % | 85 % | `HIGH` | **on** |
 
 **Figure 9.2 — The level alarm**
 
 ```mermaid
 flowchart LR
-    N(["NORMAL<br/>green"]) -- "level ≥ 80" --> W(["WARN<br/>amber"])
-    W -- "level ≥ 90" --> H(["HIGH<br/>red + horn"])
+    N(["NORMAL"]) -- "level ≥ 80" --> W(["WARN"])
+    W -- "level ≥ 90" --> H(["HIGH<br/>+ horn"])
     H -- "level < 85" --> W
     W -- "level < 75" --> N
     classDef n fill:#e6f4ea,stroke:#188038,color:#000
@@ -529,32 +566,32 @@ flowchart LR
 
 ### 9.3 — Run it
 
-1. **Simulator first.** With `plant_sim.py` still running in terminal 1, set `PLANT_HOST, PLANT_PORT = "127.0.0.1", 5020` in `gateway.py` and run `python gateway.py`. The simulated tank rises and falls on its own: within a few minutes you see `Alarm WARN` and `Alarm HIGH` in the log, and the simulator shows the light and horn your gateway wrote. Stop both with **Ctrl+C**.
+1. **Simulator first.** With `plant_sim.py` still running in terminal 1, set `PLANT_HOST, PLANT_PORT = "127.0.0.1", 5020` in `gateway.py` and run `python gateway.py`. The simulated tank rises and falls on its own: within a few minutes you see `Alarm WARN` and `Alarm HIGH` in the log, and the simulator shows the alarm and horn your gateway wrote. Stop both with **Ctrl+C**.
 2. **The real plant.** Set `PLANT_HOST, PLANT_PORT = "192.168.4.1", 502` again, then start the service:
    ```bash
    sudo systemctl start gateway
    journalctl -u gateway -f
    ```
 
-> **Three gateways, one stack light.** All three Pis run the same alarm on the same level, so they write the same outputs and agree. Change one gateway's limits and they start fighting, exactly like the valve in Topic 8.
+> **Three gateways, one alarm.** All three Pis run the same alarm on the same level, so they write the same outputs and agree. Change one gateway's limits and they start fighting, exactly like the valve in Topic 8.
 
 **Try it**
-1. **Raise the alarm.** Ask for the knob to be turned slowly up past 90 %. The light goes amber at 80, red at 90 with the horn (use the plant's mute switch if it gets too much). Turn it back to 87 %: still red. Below 85: amber. Below 75: green.
+1. **Raise the alarm.** Ask for the knob to be turned slowly up past 90 %. The plant's OLED shows `WARN` at 80, `HIGH` at 90 with the horn (use the plant's mute switch if it gets too much). Turn it back to 87 %: still `HIGH`. Below 85: `WARN`. Below 75: `NORMAL`.
 2. **Lose the plant.** Ask the trainer to unplug the ESP32 for 10 seconds. Your journal shows `Plant not answering` and readings arrive as `COMMS_FAULT`; the gateway keeps running. When the plant is back, the log shows the alarm outputs written again.
 3. **A broken contract.** Look at your neighbour's `receiver.py` (start it again if needed): it prints `temp None`. The receiver still looks for `pump_temp_c`, but the gateway now sends `room_temp_c`. Nothing crashed and nothing warned you; the data just went missing. A message format is a **contract** between two programs: change it on one side only and the other side silently breaks. Fix the receiver to print `room_temp_c`.
 4. **Ask the database.**
    ```bash
    sqlite3 -header -column data/ps01.db "SELECT status, COUNT(*) FROM plant_readings GROUP BY status;"
-   sqlite3 -header -column data/ps01.db "SELECT ts, tank_level_pct, room_temp_c, e_stop FROM plant_readings ORDER BY ts DESC LIMIT 5;"
+   sqlite3 -header -column data/ps01.db "SELECT ts, tank_level_pct, room_temp_c, pump1_on, pump2_on FROM plant_readings ORDER BY ts DESC LIMIT 5;"
    ```
 
-**Checkpoint ✅** The `gateway` service reads the real plant every 2 seconds, the stack light follows the level with hysteresis, and an unplugged plant shows up as `COMMS_FAULT` instead of stopping the gateway.
+**Checkpoint ✅** The `gateway` service reads the real plant every 2 seconds, the alarm on the plant's OLED follows the level with hysteresis, and an unplugged plant shows up as `COMMS_FAULT` instead of stopping the gateway.
 
 ---
 
 ## Topic 10 — MQTT
 
-**Goal:** replace the gateway's HTTP forwarding with **MQTT**, the publish-subscribe protocol most IIoT systems use to move data upwards, and let the pump take remote commands without giving up its local interlock.
+**Goal:** replace the gateway's HTTP forwarding with **MQTT**, the publish-subscribe protocol most IIoT systems use to move data, and let the gateway take pump commands from it.
 
 **Open:** VS Code on your Pi, folder `~/iiot`, two terminals with the venv active.
 
@@ -570,16 +607,16 @@ With HTTP on Day 1, your gateway had to know exactly who to send each reading to
 
 ```mermaid
 flowchart LR
-    gw["gateway.py<br/>publishes telemetry,<br/>alarm, status"]
-    pc["pump_control_mqtt.py<br/>subscribes to commands,<br/>publishes pump state"]
+    gw["gateway.py<br/>publishes telemetry, alarm, status<br/>subscribes to pump commands"]
     br{{"Mosquitto broker<br/>on your Pi"}}
-    nr["Node-RED dashboard<br/>(Topic 12)"]
+    nr["Node-RED dashboard<br/>(Topic 11)"]
     you["you, with<br/>mosquitto_sub / pub"]
+    plant["ESP32 plant"]
     gw -- "publish" --> br
-    pc -- "publish state" --> br
-    br -- "deliver commands" --> pc
-    br -- "deliver everything" --> nr
-    nr -- "publish START / STOP" --> br
+    br -- "pump commands" --> gw
+    gw -- "Modbus" --> plant
+    br -- "everything" --> nr
+    nr -- "pump 1 / 2 ON / OFF" --> br
     br <--> you
     classDef b fill:#fff3cd,stroke:#b8860b,color:#000
     class br b
@@ -588,10 +625,9 @@ flowchart LR
 | Idea | What it means | Where you use it today |
 |---|---|---|
 | **Topic** | A path-like name; `+` matches one level, `#` matches everything below | `ps01/+/telemetry`, `ps01/#` |
-| **QoS** (Quality of Service) | 0 = at most once (fire and forget), 1 = at least once (acknowledged), 2 = exactly once | Telemetry QoS 0 (the next reading is 2 s away); commands and state QoS 1 |
-| **Retained message** | The broker keeps the last message on a topic and hands it to every new subscriber at once | Alarm state, pump state, gateway status |
+| **QoS** (Quality of Service) | 0 = at most once (fire and forget), 1 = at least once (the broker confirms) | Telemetry QoS 0 (the next reading is 2 s away); commands, alarm and status QoS 1 |
+| **Retained message** | The broker keeps the last message on a topic and hands it to every new subscriber at once | Alarm state and gateway status |
 | **Last will** | A message the broker publishes *for* a client that vanishes without saying goodbye | `ps01/student01/status` → `offline` |
-| **Keep-alive** | The client pings the broker; after 1.5 × keep-alive of silence the broker declares it dead | 10 seconds |
 
 > **MQTT or DDS?** Many defence and naval combat systems use **DDS** (Data Distribution Service) instead. DDS has no broker: publishers and subscribers find each other directly, with detailed quality-of-service and real-time options. It suits tightly coupled systems on fast local networks. MQTT's single broker is simpler to secure and manage, and suits many small devices over unreliable links, which is why it dominates IIoT.
 
@@ -602,14 +638,14 @@ Design topics before writing code; changing them later breaks every subscriber (
 | Topic | Payload | Published by | QoS | Retained |
 |---|---|---|---|---|
 | `ps01/<gateway>/status` | `online` / `offline` | `gateway.py` (`offline` also as last will) | 1 | yes |
-| `ps01/<gateway>/telemetry` | JSON reading | `gateway.py` | 0 | no |
+| `ps01/<gateway>/telemetry` | JSON reading, including `pump1_on` and `pump2_on` | `gateway.py` | 0 | no |
 | `ps01/<gateway>/alarm` | `NORMAL` / `WARN` / `HIGH` | `gateway.py` | 1 | yes |
-| `ps01/<gateway>/pump/cmd` | `START` / `STOP` | dashboard, or you | 1 | no |
-| `ps01/<gateway>/pump/state` | JSON: pump, door, reason | `pump_control_mqtt.py` | 1 | yes |
+| `ps01/<gateway>/pump/1/cmd` | `ON` / `OFF` | dashboard, or you | 1 | **never** |
+| `ps01/<gateway>/pump/2/cmd` | `ON` / `OFF` | dashboard, or you | 1 | **never** |
 
 `<gateway>` is your Pi's hostname, for example `student01`.
 
-> **Never retain a command.** A retained `START` would be replayed to the pump every time it reconnects, perhaps hours later. Retain *state*, never *commands*.
+> **Never retain a command.** A retained `ON` would be replayed to the gateway every time it reconnects, perhaps hours later, and start a pump nobody asked for. Retain *state*, never *commands*.
 
 ### 10.3 — Install the broker and try it by hand
 
@@ -618,7 +654,7 @@ Design topics before writing code; changing them later breaks every subscriber (
    sudo apt install -y mosquitto mosquitto-clients
    sudo systemctl enable --now mosquitto
    ```
-   Out of the box, Mosquitto 2 accepts connections **only from this Pi** and without a login. That is enough for now; Topic 11 locks it down.
+   Out of the box, Mosquitto 2 accepts connections **only from this Pi**, without a login. That is all this course needs: the broker, the gateway and Node-RED all run on your Pi.
 2. In terminal 1, subscribe to everything under `ps01`:
    ```bash
    mosquitto_sub -h localhost -t 'ps01/#' -v
@@ -631,78 +667,57 @@ Design topics before writing code; changing them later breaks every subscriber (
 4. Stop the subscriber (**Ctrl+C**) and start it again. `hello` is gone; the retained `state` arrives straight away.
 5. Clear the retained message by publishing an empty one: `mosquitto_pub -h localhost -t ps01/test/state -r -n`
 
-### 10.4 — The gateway publishes over MQTT
+> **Later, in production:** a broker that other machines can reach needs a login for every program, an access list saying who may publish and subscribe to which topics, and TLS (Transport Layer Security) encryption. Keeping the broker on `localhost` is what makes it acceptable to leave them out here.
 
-All MQTT settings live in one small module, `mqtt_link.py`, which reads `~/iiot/mqtt.json`. In Topic 11 you add logins by changing that file only.
+### 10.4 — The gateway publishes, and takes pump commands
 
-1. Copy the files and create the settings file:
+1. Install the MQTT library if it is not in your venv yet, and copy the new gateway over your Topic 9 one:
    ```bash
-   cp ~/course/code/day2/{mqtt_link,pump_control_mqtt}.py ~/iiot/
+   pip install paho-mqtt==2.2.0
    cp ~/course/code/day2/gateway_mqtt.py ~/iiot/gateway.py
-   echo '{"host": "localhost", "port": 1883}' > ~/iiot/mqtt.json
    ```
 
+Everything from Topic 9 stays. These parts are new:
+
 ```python
-#!/usr/bin/env python3
-"""One place for MQTT settings. Every program connects the same way, from ~/iiot/mqtt.json.
+BROKER = "localhost"                             # Mosquitto, on this Pi
+BASE = f"ps01/{socket.gethostname()}"            # every topic this Pi uses starts here, e.g. ps01/student01
+```
 
-Adding logins to the broker (Topic 11) changes only that file, never the programs.
-"""
-import json
-import logging
-import socket
-from pathlib import Path
-from typing import Callable
+```python
+def connect_mqtt(plant: ModbusPlant) -> mqtt.Client:
+    """Connect to the broker. paho runs the network in its own thread, and reconnects by itself."""
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"{socket.gethostname()}-gateway")
+    client.will_set(f"{BASE}/status", "offline", qos=1, retain=True)    # the broker says this if we vanish
 
-import paho.mqtt.client as mqtt
+    def on_connect(c, userdata, flags, reason_code, properties):
+        log.info("MQTT connected to %s: %s", BROKER, reason_code)
+        c.publish(f"{BASE}/status", "online", qos=1, retain=True)
+        c.subscribe(f"{BASE}/pump/+/cmd", qos=1)                      # + = any pump number
 
-CONFIG_FILE = Path.home() / "iiot" / "mqtt.json"
-GATEWAY = socket.gethostname()
-BASE = f"ps01/{GATEWAY}"                 # every topic this Pi publishes starts here
+    def on_message(c, userdata, msg):
+        pump_command(plant, msg)
 
-log = logging.getLogger("mqtt")
-
-
-def make_client(role: str, will: tuple[str, str] | None = None,
-                on_connect: Callable[[mqtt.Client], None] | None = None) -> mqtt.Client:
-    """Create, configure and start an MQTT client for one program (role = gateway, pump, ...)."""
-    cfg = json.loads(CONFIG_FILE.read_text())
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"{GATEWAY}-{role}")
-
-    login = cfg.get("logins", {}).get(role)
-    if login:
-        client.username_pw_set(login["username"], login["password"])
-    if will:
-        client.will_set(will[0], will[1], qos=1, retain=True)
-
-    def _on_connect(c, userdata, flags, reason_code, properties):
-        if reason_code.is_failure:
-            log.warning("MQTT broker refused us: %s", reason_code)
-            return
-        log.info("MQTT connected to %s:%s as %s", cfg["host"], cfg["port"], login["username"] if login else "anonymous")
-        if on_connect:
-            on_connect(c)
-
-    def _on_disconnect(c, userdata, flags, reason_code, properties):
-        log.warning("MQTT disconnected: %s", reason_code)
-
-    client.on_connect = _on_connect
-    client.on_disconnect = _on_disconnect
-    client.reconnect_delay_set(min_delay=1, max_delay=10)
-    client.connect_async(cfg["host"], cfg["port"], keepalive=10)
-    client.loop_start()                                        # network traffic runs in its own thread
+    client.on_connect = on_connect
+    client.on_message = on_message
+    client.connect_async(BROKER, 1883, keepalive=10)
+    client.loop_start()
     return client
 ```
 
-| Piece | What it does |
-|---|---|
-| `BASE = f"ps01/{GATEWAY}"` | Every topic starts with your hostname, so three Pis never collide |
-| `CallbackAPIVersion.VERSION2` | paho-mqtt 2.x needs you to say which callback style you use |
-| `will_set(...)` | Registers the last will with the broker when connecting |
-| `connect_async` + `loop_start` | Connects in the background and reconnects by itself (1 to 10 s apart) |
-| `on_connect` | Runs after every (re)connect: the place to publish `online` and to subscribe |
+```python
+def pump_command(plant: ModbusPlant, msg: mqtt.MQTTMessage) -> None:
+    """ps01/<gateway>/pump/<1 or 2>/cmd, payload ON or OFF: switch that pump on the plant."""
+    pump = msg.topic.split("/")[3]
+    command = msg.payload.decode(errors="replace").strip().upper()
+    if pump not in ("1", "2") or command not in ("ON", "OFF"):
+        log.warning("Ignored %r on %s", command, msg.topic)
+        return
+    ok = plant.set_pump(int(pump), command == "ON")
+    log.info("Pump %s %s from remote: %s", pump, command, "done" if ok else "FAILED, plant not answering")
+```
 
-In `gateway.py`, the HTTP forward became an MQTT publish; everything else is as in Topic 9:
+And in the store thread, the HTTP POST became an MQTT publish:
 
 ```python
         if client.is_connected():
@@ -712,309 +727,69 @@ In `gateway.py`, the HTTP forward became an MQTT publish; everything else is as 
             log.warning("Stored locally, broker not connected (queue: %d)", q.qsize())
 ```
 
-```python
-    client = make_client("gateway", will=(f"{BASE}/status", "offline"),
-                         on_connect=lambda c: c.publish(f"{BASE}/status", "online", qos=1, retain=True))
-```
-
-2. Restart the service, and watch the topics in your subscriber terminal:
-   ```bash
-   sudo systemctl restart gateway
-   mosquitto_sub -h localhost -t 'ps01/#' -v
-   ```
-   You see `status online`, the current `alarm`, and a `telemetry` message every 2 seconds.
-
-### 10.5 — Remote commands, local authority
-
-`pump_control_mqtt.py` is your Day 1 `pump_control.py` with MQTT added. A remote `START` goes through **exactly the same checks** as touching the START jumper.
-
-1. Stop Day 1's version if it is still running, set `RELAY_ACTIVE_HIGH` to the value you found on Day 1, then run:
-   ```bash
-   python pump_control_mqtt.py
-   ```
-
-```python
-#!/usr/bin/env python3
-"""PS-01 pump control with remote commands over MQTT. The local interlock still decides.
-
-Same wiring as Day 1. Subscribes to  ps01/<gateway>/pump/cmd    (START or STOP)
-                  publishes        ps01/<gateway>/pump/state  (JSON, retained)
-A remote START goes through exactly the same checks as the START jumper.
-"""
-import json
-import logging
-import signal
-import sys
-import threading
-from datetime import datetime, timezone
-
-from gpiozero import Button, OutputDevice
-
-from mqtt_link import BASE, make_client
-
-RELAY_ACTIVE_HIGH = True  # use the value you found on Day 1
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-log = logging.getLogger("pump_control")
-
-door = Button(17, pull_up=True, bounce_time=0.05)
-start_button = Button(22, pull_up=True, bounce_time=0.05)
-stop_button = Button(23, pull_up=True, bounce_time=0.05)
-pump = OutputDevice(27, active_high=RELAY_ACTIVE_HIGH, initial_value=False)
-lock = threading.Lock()                 # GPIO events and MQTT messages arrive on different threads
-client = None
-
-
-def publish_state(reason: str):
-    state = {
-        "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "pump": "ON" if pump.is_active else "OFF",
-        "door": "closed" if door.is_pressed else "open",
-        "reason": reason,
-    }
-    if client:
-        return client.publish(f"{BASE}/pump/state", json.dumps(state), qos=1, retain=True)
-    return None
-
-
-def start(source: str) -> None:
-    with lock:
-        if not door.is_pressed:
-            reason = f"START from {source} refused: door is open"
-        elif stop_button.is_pressed:
-            reason = f"START from {source} refused: STOP is held"
-        elif pump.is_active:
-            reason = "already running"
-        else:
-            pump.on()
-            reason = f"START from {source}"
-        log.info("%s -> pump %s", reason, "ON" if pump.is_active else "OFF")
-        publish_state(reason)
-
-
-def stop(reason: str) -> None:
-    with lock:
-        if pump.is_active:
-            pump.off()
-        log.info("%s -> pump OFF", reason)
-        publish_state(reason)
-
-
-def door_opened() -> None:
-    log.warning("Door OPEN")
-    stop("door opened")
-
-
-def on_command(c, userdata, msg) -> None:
-    command = msg.payload.decode(errors="replace").strip().upper()
-    if command == "START":
-        start("remote")
-    elif command == "STOP":
-        stop("STOP from remote")
-    else:
-        log.warning("Ignored unknown command %r on %s", command, msg.topic)
-
-
-def on_connect(c) -> None:
-    c.subscribe(f"{BASE}/pump/cmd", qos=1)
-    publish_state("pump control started")
-
-
-start_button.when_pressed = lambda: start("local jumper")
-stop_button.when_pressed = lambda: stop("STOP from local jumper")
-door.when_released = door_opened
-door.when_pressed = lambda: (log.info("Door closed"), publish_state("door closed"))
-
-client = make_client("pump", will=(f"{BASE}/pump/state", json.dumps({"pump": "UNKNOWN",
-                                                                   "reason": "pump control offline"})),
-                     on_connect=on_connect)
-client.message_callback_add(f"{BASE}/pump/cmd", on_command)
-
-signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-
-log.info("Pump control ready. Door is %s, pump is OFF", "closed" if door.is_pressed else "OPEN")
-try:
-    while True:
-        threading.Event().wait(1)       # wake every second, so Ctrl+C and SIGTERM are handled promptly
-finally:
-    pump.off()
-    info = publish_state("pump control stopped")
-    try:
-        info.wait_for_publish(2)
-    except (AttributeError, RuntimeError, ValueError):
-        pass
-    client.disconnect()
-    client.loop_stop()
-    log.info("Pump control stopped, pump OFF")
-```
-
 | Piece | What it does |
 |---|---|
-| `start(source)` | The Day 1 interlock, now reporting *why* it refused, and who asked |
-| `lock` | GPIO events and MQTT messages arrive on different threads; only one may switch the pump at a time |
-| `publish_state()` | Retained JSON, so a dashboard that opens later sees the pump at once |
-| Last will on `pump/state` | If this program dies, subscribers see `UNKNOWN`, not a stale `ON` |
-| `threading.Event().wait(1)` | Waits a second at a time instead of `pause()`, so **Ctrl+C** and `systemctl stop` are always noticed, even with the MQTT thread running |
+| `BASE = f"ps01/{socket.gethostname()}"` | Every topic starts with your hostname, so three Pis never collide |
+| `CallbackAPIVersion.VERSION2` | paho-mqtt 2.x needs you to say which callback style you use |
+| `will_set(...)` | Registers the last will with the broker when connecting |
+| `connect_async` + `loop_start` | Connects in the background, in paho's own thread, and reconnects by itself |
+| `on_connect` | Runs after every (re)connect: the place to publish `online` and to subscribe |
+| `on_message` → `pump_command()` | Runs in paho's thread for every pump command. Bad topics or payloads are logged and ignored |
+| `plant.set_pump()` | The MQTT thread and the sensor thread now share one Modbus connection; the lock in `ModbusPlant` lets one talk at a time |
 
-**Figure 10.2 — A remote START meets the interlock**
+**Figure 10.2 — A pump command, from the dashboard to the plant and back**
 
 ```mermaid
 sequenceDiagram
     participant D as Dashboard
     participant B as Broker
-    participant P as pump_control_mqtt.py
-    participant R as Relay
-    D->>B: ps01/student01/pump/cmd = START (QoS 1)
-    B->>P: START
-    P->>P: door closed? STOP not held?
-    alt door open
-        P->>B: pump/state = OFF, "START from remote refused: door is open"
-    else checks pass
-        P->>R: on
-        P->>B: pump/state = ON, "START from remote"
-    end
-    B->>D: new pump state (retained)
+    participant G as gateway.py
+    participant P as ESP32 plant
+    D->>B: ps01/student01/pump/1/cmd = ON (QoS 1)
+    B->>G: ON
+    G->>P: FC 05, coil 1 = on
+    Note over P: LED 0 turns blue
+    G->>P: next poll: FC 01, coils 0 to 2
+    G->>B: telemetry with pump1_on = true
+    B->>D: Pump 1 RUNNING
 ```
 
-**Try it**
-1. **Refused from afar.** Remove the door jumper, then from terminal 2: `mosquitto_pub -h localhost -t ps01/student01/pump/cmd -m START -q 1`. The relay does not click, and your subscriber shows `pump/state` with `refused: door is open`.
-2. **Allowed.** Put the door jumper back and send `START` again: the relay clicks. Send `STOP`.
-3. **The last will.** Kill the gateway the hard way: `sudo systemctl kill -s SIGKILL gateway`. The subscriber prints `ps01/student01/status offline` at once: the broker saw the connection drop without a goodbye and published the last will on the gateway's behalf. Three seconds later systemd restarts the gateway and `online` follows. (If the network dies silently instead, the broker only notices after 1.5 × keep-alive, about 15 seconds.)
-4. **Retained state.** Stop and start your subscriber: the latest `status`, `alarm` and `pump/state` arrive at once, before any new reading.
-5. **Never retain a command.** Send `mosquitto_pub -h localhost -t ps01/student01/pump/cmd -m START -r`, then restart `pump_control_mqtt.py`: the pump starts by itself on reconnect. Clear it at once with `mosquitto_pub -h localhost -t ps01/student01/pump/cmd -r -n`. This is exactly why commands are never retained.
-
-**Checkpoint ✅** `mosquitto_sub -t 'ps01/#'` shows your gateway's telemetry, alarm and status, a remote START is refused with the door open and accepted with it closed, and a killed gateway shows up as `offline`.
-
----
-
-## Topic 11 — Securing MQTT
-
-**Goal:** close the open broker: a login for every program, and an **ACL** (Access Control List) that says exactly which topics each one may read or write.
-
-**Open:** two terminals on your Pi.
-
-### 11.1 — Who may do what
-
-Right now any program on your Pi can publish anything, including a fake reading or a `START`. You fix that with one user per program:
-
-| User | Used by | May read | May write |
-|---|---|---|---|
-| `gateway` | `gateway.py` | — | `status`, `telemetry`, `alarm`, and `events` (used from Day 3) |
-| `pump` | `pump_control_mqtt.py` | `pump/cmd` | `pump/state` |
-| `dashboard` | Node-RED, and you with `mosquitto_sub` | `ps01/#` | `pump/cmd` |
-
-Each program gets only what its job needs. The dashboard can *ask* for START, but it can never pretend to be the gateway.
-
-### 11.2 — Logins and the access list
-
-1. Create the three users. Each command asks for a password twice; write them down.
+2. Restart the service, and watch the topics in terminal 1:
    ```bash
-   sudo mosquitto_passwd -c /etc/mosquitto/passwd gateway
-   sudo mosquitto_passwd /etc/mosquitto/passwd pump
-   sudo mosquitto_passwd /etc/mosquitto/passwd dashboard
+   sudo systemctl restart gateway
+   mosquitto_sub -h localhost -t 'ps01/#' -v
    ```
-   `-c` creates the file: use it for the first user only, or it wipes the others.
-2. Install the access list and the broker settings:
-   ```bash
-   sudo cp ~/course/code/day2/mosquitto/acl /etc/mosquitto/acl
-   sudo cp ~/course/code/day2/mosquitto/ps01.conf /etc/mosquitto/conf.d/ps01.conf
-   sudo chown mosquitto:mosquitto /etc/mosquitto/passwd /etc/mosquitto/acl
-   sudo chmod 600 /etc/mosquitto/passwd /etc/mosquitto/acl
-   sudo systemctl restart mosquitto
-   ```
-
-```conf
-# Topic 11: a login for every program and per-user topic rules.
-# Listens on this Pi only (127.0.0.1): nothing leaves the Pi, so plain MQTT is acceptable here.
-listener 1883 127.0.0.1
-allow_anonymous false
-password_file /etc/mosquitto/passwd
-acl_file /etc/mosquitto/acl
-```
-
-```conf
-# Who may do what. Anything not listed is refused.
-
-# gateway.py publishes readings, alarm state, its own online/offline status, and events (Day 3)
-user gateway
-topic write ps01/+/status
-topic write ps01/+/telemetry
-topic write ps01/+/alarm
-topic write ps01/+/events
-
-# pump_control_mqtt.py takes commands and reports the pump state
-user pump
-topic read ps01/+/pump/cmd
-topic write ps01/+/pump/state
-
-# Node-RED dashboard (and you, with mosquitto_sub): sees everything, may only send pump commands
-user dashboard
-topic read ps01/#
-topic write ps01/+/pump/cmd
-```
-
-> **Mosquitto will not start?** Run `journalctl -u mosquitto -n 20`. `Unable to open pwfile` means the file is not owned by the `mosquitto` user: the broker reads it *after* dropping its root rights.
-
-3. Give your programs their logins. Copy the template, put in the passwords you chose, and keep the file private:
-   ```bash
-   cp ~/course/code/day2/mosquitto/mqtt.json ~/iiot/mqtt.json
-   chmod 600 ~/iiot/mqtt.json
-   nano ~/iiot/mqtt.json
-   ```
-
-```json
-{
-  "host": "localhost",
-  "port": 1883,
-  "logins": {
-    "gateway": {"username": "gateway", "password": "GATEWAY-PASSWORD"},
-    "pump": {"username": "pump", "password": "PUMP-PASSWORD"}
-  }
-}
-```
-
-4. Restart the gateway and pump control. No program changed, only `mqtt.json`. Their logs now say `MQTT connected to localhost:1883 as gateway` (and `as pump`).
-5. From now on, watch with the dashboard login:
-   ```bash
-   mosquitto_sub -h localhost -t 'ps01/#' -v -u dashboard -P '<dashboard password>'
-   ```
-6. Tidy the firewall: the Day 1 receiver is gone, so close its port.
+   You see `status online`, the current `alarm`, and a `telemetry` message every 2 seconds.
+3. Tidy the firewall: the gateway no longer posts to your neighbour's receiver, so close Day 1's port.
    ```bash
    sudo ufw delete allow in on wlan0 to any port 8080 proto tcp
    ```
-   The broker listens on `127.0.0.1` only, so it needs no firewall rule at all.
+4. In terminal 2, start pump 1:
+   ```bash
+   mosquitto_pub -h localhost -t ps01/student01/pump/1/cmd -m ON -q 1
+   ```
+   The plant's LED 0 turns blue, the gateway's journal says `Pump 1 ON from remote: done`, and the next telemetry shows `"pump1_on": true`. Send `OFF` to stop it.
 
 **Try it**
-1. **No login.** `mosquitto_sub -h localhost -t 'ps01/#'` → `Connection Refused: not authorised.`
-2. **Wrong password.** Same command with `-u dashboard -P wrong` → refused.
-3. **Wrong permissions.** As `dashboard`, try to fake a reading:
-   ```bash
-   mosquitto_pub -h localhost -u dashboard -P '<dashboard password>' -t ps01/student01/telemetry -m fake
-   ```
-   It seems to work, but nothing arrives at your subscriber, and `journalctl -u mosquitto -n 5` shows `Denied PUBLISH`. A client is not told it was refused, so it learns nothing about the rules.
-4. **Not from outside.** Ask your neighbour to try your broker over the plant network: `mosquitto_sub -h 192.168.4.11 -t '#' -u dashboard -P x`. It just hangs: your firewall drops it, and behind the firewall nothing listens on that address anyway. Press **Ctrl+C**.
-5. **What a login does not hide.** In terminal 1, watch the broker's traffic on this Pi:
-   ```bash
-   sudo apt install -y tcpdump
-   sudo tcpdump -i lo -A -n port 1883
-   ```
-   In terminal 2, subscribe briefly with the dashboard login, then scroll back through terminal 1: the username, the password and every reading are there in plain text.
+1. **Pump 2.** Start and stop pump 2 the same way. Then send `-m START`: the gateway logs `Ignored 'START'` and nothing moves. A command the receiver does not understand must change nothing.
+2. **The last will.** Kill the gateway the hard way: `sudo systemctl kill -s SIGKILL gateway`. The subscriber prints `ps01/student01/status offline` at once: the broker saw the connection drop without a goodbye and published the last will on the gateway's behalf. Three seconds later systemd restarts the gateway and `online` follows.
+3. **Retained state.** Stop and start your subscriber: the latest `status` and `alarm` arrive at once, before any new reading.
+4. **Never retain a command.** Send `mosquitto_pub -h localhost -t ps01/student01/pump/1/cmd -m ON -r`, then stop pump 1 with a normal `-m OFF`. Now `sudo systemctl restart gateway`: pump 1 starts by itself, because the broker replays the retained `ON` when the gateway subscribes. Clear it at once with `mosquitto_pub -h localhost -t ps01/student01/pump/1/cmd -r -n`, and stop the pump.
+5. **Who has control?** Your neighbour starts pump 1 from their Pi while you stop it from yours. Both gateways write the same coil on the same plant; the last one wins. Discuss: which gateway should own the pumps?
 
-> **Why plain MQTT is acceptable here, and when it is not.** Your broker only listens on `127.0.0.1`, so the traffic never leaves the Pi: to read it, someone must already be logged in to your Pi with `sudo`, and then they own it anyway. The moment a broker serves other machines (a central server, a SCADA system, a laptop), add **TLS** (Transport Layer Security), normally on port 8883, so the network carries only encrypted bytes and clients can check they reached the real broker.
-
-**Checkpoint ✅** Your broker refuses anonymous clients, accepts each program only with its own login, enforces the ACL, and cannot be reached from the plant network.
+**Checkpoint ✅** `mosquitto_sub -t 'ps01/#'` shows your gateway's telemetry, alarm and status, a `pump/1/cmd ON` turns the plant's LED 0 blue, and a killed gateway shows up as `offline`.
 
 ---
 
-## Topic 12 — Node-RED operator dashboard
+## Topic 11 — Node-RED operator dashboard
 
-**Goal:** give the operator a live view of PS-01 and START/STOP buttons, using **Node-RED**, without giving up any of the security or safety you built.
+**Goal:** give the operator a live view of PS-01 and a button for each pump, using **Node-RED**. You import the readings part of the dashboard, then build the pump controls yourself, node by node.
 
-**Figure 12.1 — Where everything runs**
+**Figure 11.1 — Where everything runs**
 
-![The laptop only runs a web browser, connected over the LAN cable to port 1880 on the Pi; the Pi runs Node-RED, the Mosquitto broker, the gateway and pump control; the Pi reaches the ESP32 plant over Modbus on Wi-Fi](images/day2-fig-12-1-where-it-runs.svg)
+![The laptop only runs a web browser, connected over the LAN cable to port 1880 on the Pi; the Pi runs Node-RED, the Mosquitto broker and the gateway; the Pi reaches the ESP32 plant over Modbus on Wi-Fi](images/day2-fig-11-1-where-it-runs.svg)
 
-### 12.1 — Install Node-RED
+### 11.1 — Install Node-RED
 
 **Node-RED** is a visual programming tool: you wire **nodes** (an MQTT input, a function, a gauge) into **flows** in a web editor. It is widely used on IIoT gateways because operators and engineers can read a flow at a glance.
 
@@ -1044,90 +819,122 @@ topic write ps01/+/pump/cmd
    cd ~/.node-red && npm install @flowfuse/node-red-dashboard@1.36.1
    sudo systemctl restart nodered
    ```
-5. On your laptop, open `http://student01.local:1880` and log in as `admin`.
+5. On your laptop, open `http://student01.local:1880` and log in as `admin`. If Node-RED asks about **update notifications**, either answer is fine.
 
-> **Never leave the editor without a login.** Anyone who reaches an open Node-RED editor can run any code on your Pi as `student01`, including switching the pump. The firewall rule keeps it off the plant side; the login keeps it off the rest.
+> **Never leave the editor without a login.** Anyone who reaches an open Node-RED editor can run any code on your Pi as `student01`, including switching the pumps. The firewall rule keeps it off the plant side; the login keeps it off the rest.
 
-### 12.2 — Import the PS-01 flow
+### 11.2 — Import the starter flow
 
-1. On your laptop, open the course repository on GitHub, go to `code/day2/ps01-dashboard-flow.json`, and click **Copy raw file**.
-2. In Node-RED: menu **☰ → Import**, paste, then **Import**.
-3. Double-click any purple MQTT node, then the pencil next to *Server* (**PS-01 broker**). On the **Security** tab enter the `dashboard` username and password.
-4. Click **Deploy**. Under every MQTT node a green **connected** appears within a few seconds.
+The starter flow shows the readings: tank level, alarm, gateway status and the pump room. The pump controls are yours to build in 11.3.
 
-**Figure 12.2 — The flow, simplified**
+1. On your laptop, open the course repository on GitHub, go to `code/day2/ps01-dashboard-starter.json`, and click **Copy raw file**.
+2. In Node-RED: menu **☰ → Import**, paste into the box, then click **Import**.
 
-```mermaid
-flowchart TB
-    subgraph L1["Readings"]
-        direction LR
-        t["mqtt in<br/>ps01/+/telemetry"] --> f["function<br/>split the reading"] --> w1["gauge, chart,<br/>temp, humidity, plant"]
-    end
-    subgraph L2["Gateway and alarm"]
-        direction LR
-        s["mqtt in<br/>ps01/+/status"] --> st["text: gateway"]
-        a["mqtt in<br/>ps01/+/alarm"] --> at["text: alarm,<br/>pop-up if HIGH"]
-    end
-    subgraph L3["Pump state"]
-        direction LR
-        p["mqtt in<br/>ps01/+/pump/state"] --> pf["function<br/>pump state"] --> pt["text: pump, last event,<br/>pop-up if refused"]
-    end
-    subgraph L4["Commands"]
-        direction LR
-        b["buttons<br/>START, STOP"] --> fc["function<br/>command topic"] --> o["mqtt out<br/>ps01/student01/pump/cmd"]
-    end
-    L1 ~~~ L2 ~~~ L3 ~~~ L4
-```
+**Figure 11.2 — The Import dialog with the starter flow pasted in**
+
+![Node-RED Import nodes dialog, Clipboard tab, with the PS-01 starter flow JSON pasted into the box and the Import button bottom right](images/day2-fig-11-2-import.png)
+
+3. A new tab, **PS-01 dashboard**, appears next to the empty *Flow 1*. Click it.
+4. Click **Deploy** (top right). Within a few seconds a green **connected** appears under every purple MQTT node.
+
+**Figure 11.3 — The starter flow, deployed**
+
+![The PS-01 dashboard tab: mqtt in nodes for telemetry, status and alarm, all connected; split the reading feeds the gauge, chart, temperature, humidity and plant text nodes, with its last two outputs still unwired; the alarm feeds a HIGH? switch and a warning notification](images/day2-fig-11-3-starter-flow.png)
 
 | Node | What it does |
 |---|---|
 | `mqtt in` with `ps01/+/…` | The `+` matches your hostname, so the same flow works on every Pi |
-| *split the reading* | Turns one JSON reading into five messages, one per widget; a missing value shows as `—` |
-| *command topic* | Builds `ps01/<gateway>/pump/cmd` from the gateway name it saw in the telemetry |
-| `mqtt out` | QoS 1, **not retained**: a command, not a state |
-| *notification* | Pops up on the operator's screen for a HIGH alarm or a refused START |
+| *split the reading* | Turns one JSON reading into seven messages, one per widget; a missing value shows as `—`. Outputs 6 and 7 are *pump 1* and *pump 2*: still unwired |
+| *HIGH?* → *alarm message* → *warning* | Pops up a notification on the operator's screen when the alarm turns HIGH |
 
-### 12.3 — Operate the plant
+5. Open `http://student01.local:1880/dashboard`. Tank, Status and Pump room show live values.
+
+### 11.3 — Build the pump 1 controls
+
+Four nodes: two buttons, one **mqtt out** that publishes their command, and one **text** that shows the pump's state. Node-RED's palette is the list of nodes on the left; type a name in **filter nodes** to find one fast.
+
+1. **The ON button.** Drag a **button** (palette section *dashboard 2*) onto the canvas, below the alarm nodes, and double-click it.
+   - **Group:** choose **Add new ui-group…** and click the pencil. Name `Pump 1`, Page `Stesen Pam PS-01`, then **Add**.
+   - **Label:** `PUMP 1 ON`. **Icon:** `play`.
+   - **Payload:** keep the `a-z` (string) type and type `ON`.
+   - Further down, **Background:** `#1a73e8` (blue, the colour of a running pump on the plant).
+   - Click **Done**.
+
+**Figure 11.4 — The PUMP 1 ON button**
+
+![Edit button node: Name PUMP 1 ON, Group Stesen Pam PS-01 Pump 1, Icon play, Label PUMP 1 ON, Enable click event ticked, Payload string ON](images/day2-fig-11-4-button.png)
+
+2. **The OFF button.** Select the ON button, press **Ctrl+C** then **Ctrl+V**, place the copy below it and double-click it: Label `PUMP 1 OFF`, Icon `stop`, Payload `OFF`, Background `#d93025` (red). **Done**.
+3. **The state.** Drag a **text** node (*dashboard 2*) next to the right-hand column of text nodes. Group `Pump 1`, Label `Pump 1`, Name `Pump 1`. **Done**.
+
+**Figure 11.5 — The Pump 1 text node**
+
+![Edit text node: Name Pump 1, Group Stesen Pam PS-01 Pump 1, Label Pump 1, Value msg.payload](images/day2-fig-11-5-text.png)
+
+4. **Wire the state.** Hover over the outputs of *split the reading*: the sixth says **pump 1**. Drag from it to the input of the *Pump 1* text node.
+5. **The command.** Drag an **mqtt out** node (palette section *network*) to the right of the buttons, and double-click it.
+   - **Server:** `PS-01 broker` (it already exists: the starter flow brought it).
+   - **Topic:** `ps01/student01/pump/1/cmd`.
+   - **QoS:** `1`. **Retain:** `false`: a command, never a state.
+   - **Name:** `pump 1 command`. **Done**.
+
+**Figure 11.6 — The pump 1 command**
+
+![Edit mqtt out node: Server PS-01 broker, Topic ps01/student01/pump/1/cmd, QoS 1, Retain false, Name pump 1 command](images/day2-fig-11-6-mqtt-out.png)
+
+6. Wire **both** buttons to *pump 1 command*, then click **Deploy**.
+7. **Pump 2.** Select your four new nodes (drag a box around them), copy and paste them, and change every `1` to `2`: group `Pump 2` (a new group again), labels, names and the topic `ps01/student01/pump/2/cmd`. Wire the seventh output of *split the reading* (**pump 2**) to the *Pump 2* text node. **Deploy**.
+
+**Figure 11.7 — The finished flow**
+
+![The finished PS-01 flow: split the reading now also feeds Pump 1 and Pump 2 text nodes; PUMP 1 ON and PUMP 1 OFF buttons feed pump 1 command, and PUMP 2 ON and OFF feed pump 2 command, both connected](images/day2-fig-11-7-finished-flow.png)
+
+> **Stuck?** `code/day2/ps01-dashboard-flow.json` is the finished flow. Import it instead of the starter, and compare it with yours.
+
+| Choice | Why |
+|---|---|
+| The topic is typed into the mqtt out node | The simplest way: one command node per pump, nothing computed |
+| The button only *asks* | The dashboard publishes `ON`; the gateway writes the coil; the plant switches the pump |
+| The state comes from telemetry, not from the button | The dashboard shows what the plant *reports*, not what someone pressed. If a command is lost, the screen does not lie |
+
+### 11.4 — Operate the plant
 
 Open `http://student01.local:1880/dashboard` on your laptop.
 
-**Figure 12.3 — A remote START refused by the door interlock**
+**Figure 11.8 — Pump 1 running, tank level in WARN**
 
-![PS-01 dashboard: tank gauge at 78.6 percent, level trend, gateway online, alarm NORMAL, and a red pop-up: START from remote refused: door is open](images/day2-fig-12-3-dashboard-refused.png)
+![PS-01 dashboard: tank gauge amber at 85.1 percent with its 10-minute trend, gateway online, alarm WARN, plant OK, Pump 1 RUNNING, Pump 2 stopped, each with blue ON and red OFF buttons, and the pump room temperature and humidity](images/day2-fig-11-8-dashboard-running.png)
 
-**Figure 12.4 — Door closed, pump running, level rising into WARN**
+**Figure 11.9 — HIGH alarm: the gauge turns red and a pop-up warns the operator**
 
-![PS-01 dashboard: tank gauge amber at 88.9 percent, alarm WARN, pump ON with door closed, last event START from remote](images/day2-fig-12-4-dashboard-running.png)
+![PS-01 dashboard: tank gauge red at 92.9 percent, alarm HIGH, Pump 2 RUNNING, and a red pop-up top right: HIGH TANK LEVEL: the horn is on](images/day2-fig-11-9-dashboard-high.png)
 
 **Try it**
-1. **The final test.** Remove the door jumper and press **START** on the dashboard. The pop-up says `START from remote refused: door is open` and the relay stays silent. Replace the jumper, press **START**: the relay clicks and the dashboard shows `ON · door closed`. Now pull the door jumper: the pump stops and *Last event* says `door opened`.
+1. **The final test.** Press **PUMP 1 ON**: the plant's LED 0 turns blue, and within 2 seconds the dashboard says `RUNNING`. Press **PUMP 2 ON**, then both OFF buttons. Why can the dashboard lag up to 2 seconds behind the LED?
 2. **The alarm reaches the operator.** Ask for the plant's knob to go past 90 %: the gauge turns red, *Alarm* shows `HIGH`, and a pop-up appears.
-3. **Lose the gateway.** `sudo systemctl stop gateway`: *Gateway* turns `offline` and the gauge freezes. A frozen value next to `offline` is honest; a frozen value with no status would be a lie. Start it again.
-4. **Lose the plant.** Ask the trainer to unplug the ESP32: *Plant* shows `COMMS_FAULT`. Plug it back in.
-5. **Break it on purpose.** In Node-RED, change the broker password to a wrong one and deploy: the MQTT nodes show **disconnected** and the dashboard stops updating. Put the right one back.
+3. **Lose the gateway.** `sudo systemctl stop gateway`: *Gateway* turns `offline` and the gauge freezes. Press **PUMP 1 ON**: nothing happens, because nobody is listening for the command. A frozen value next to `offline` is honest; a frozen value with no status would be a lie. Start the gateway again.
+4. **Lose the plant.** Ask the trainer to unplug the ESP32: *Plant* shows `COMMS_FAULT` and both pumps show `—`. Plug it back in.
+5. **Break it on purpose.** `sudo systemctl stop mosquitto`: every MQTT node in the editor shows **disconnected** and the dashboard stops updating. Start it again: Node-RED and the gateway reconnect by themselves.
 
-> **Same rule as Day 1.** The dashboard is just one more way to *ask* for START. The decision stays in `pump_control_mqtt.py`, next to the hardware, and the plant's own e-stop overrides everything above it.
-
-**Checkpoint ✅** From your laptop, the dashboard shows live tank level, temperature, alarm and gateway status, and a START pressed with the door open is refused and explained on screen.
+**Checkpoint ✅** From your laptop, the dashboard shows live tank level, alarm, gateway status and both pumps, and the pump buttons you built switch the plant's LEDs between red and blue.
 
 ---
 
 ## End of Day 2 — what you should have
 
 - The `gateway` service reading the real plant over Modbus every 2 seconds and running the level alarm with hysteresis
-- Mosquitto on your Pi listening only on `127.0.0.1`, with a login per program and an ACL
-- `gateway.py` publishing `telemetry`, `alarm` and `status` (with a last will) under `ps01/<your Pi>/`
-- `pump_control_mqtt.py` taking START/STOP over MQTT, still governed by the door interlock
-- Node-RED with a login, reachable only from the cable side, showing the PS-01 dashboard
+- Mosquitto on your Pi, reachable only from the Pi itself
+- `gateway.py` publishing `telemetry`, `alarm` and `status` (with a last will) under `ps01/<your Pi>/`, and switching pump 1 and pump 2 on `pump/<n>/cmd`
+- Node-RED with a login, reachable only from the cable side, showing the PS-01 dashboard with the pump controls you built
 
 **Security recap**
 - Modbus has no security: it stays on the plant network, and only the gateway crosses over.
-- `~/iiot/mqtt.json` and `/etc/mosquitto/passwd` hold credentials: `chmod 600`, never in Git.
-- The broker carries plain MQTT and is safe only because it never leaves the Pi. Serve other machines, and you add TLS first.
+- The broker has no logins and carries plain MQTT. It is acceptable only because it never leaves the Pi; serve other machines, and it needs logins, an access list and TLS first.
+- The Node-RED editor can run any code on your Pi: it has a login, and the firewall keeps it to the cable side.
 - Firewall today: SSH, mDNS and Node-RED on `eth0`; nothing at all on the plant side.
 
 **Extra, if you finish early**
-1. Run `pump_control_mqtt.py` as a systemd service, like the gateway.
-2. Add a **Silence horn** button to the dashboard. Which user needs permission to write the horn, and should that go over MQTT to the gateway or straight to the plant over Modbus? Decide, and defend your choice.
+1. Add a **Silence horn** button to the dashboard. Should it go over MQTT to the gateway, or straight to the plant over Modbus? Decide, and defend your choice.
+2. Show each pump's state in colour: blue text for `RUNNING`, red for `stopped`, like the plant's LEDs.
 
-**Tomorrow (Day 3):** the gateway becomes a complete edge node: it buffers data while the network is down and sends it when it returns, spots unusual readings on its own, and shows everything on one dashboard.
+**Tomorrow (Day 3):** the gateway becomes a complete edge node: it buffers data while the network is down and sends it when it returns, emails a person when something needs one, and is ready to run unattended.

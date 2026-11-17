@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """PS-01 edge gateway, Day 2 with MQTT: reads the plant over Modbus, runs the alarm, publishes over MQTT,
-and switches pump 1 and pump 2 on the plant when a command arrives.
+and switches pump 1 and pump 2 when a command arrives.
 
 - sensor thread  : polls the plant every INTERVAL_S seconds, updates the alarm, puts the reading on a queue
 - store thread   : saves every reading to SQLite, then publishes it to the MQTT broker
-- MQTT thread     : (paho's own) runs pump_command() when ps01/<gateway>/pump/<n>/cmd arrives
+- MQTT thread    : paho's own; calls on_message() when a pump command arrives
 Since Topic 9 only the forwarding changed: HTTP POST became MQTT publish.
 """
 import json
 import logging
 import queue
 import signal
+import socket
 import sqlite3
 import threading
 from dataclasses import asdict
@@ -18,16 +19,37 @@ from pathlib import Path
 
 import paho.mqtt.client as mqtt
 
-from mqtt_link import BASE, make_client
 from plant import LevelAlarm, ModbusPlant
 
 STATION = "PS-01"
 INTERVAL_S = 2
 PLANT_HOST, PLANT_PORT = "192.168.4.1", 502      # simulator: "127.0.0.1", 5020
+BROKER = "localhost"                             # Mosquitto, on this Pi
+BASE = f"ps01/{socket.gethostname()}"            # every topic this Pi uses starts here, e.g. ps01/student01
 DB_FILE = Path.home() / "iiot" / "data" / "ps01.db"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(threadName)s %(levelname)s %(message)s")
 log = logging.getLogger("gateway")
+
+
+def connect_mqtt(plant: ModbusPlant) -> mqtt.Client:
+    """Connect to the broker. paho runs the network in its own thread, and reconnects by itself."""
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"{socket.gethostname()}-gateway")
+    client.will_set(f"{BASE}/status", "offline", qos=1, retain=True)    # the broker says this if we vanish
+
+    def on_connect(c, userdata, flags, reason_code, properties):
+        log.info("MQTT connected to %s: %s", BROKER, reason_code)
+        c.publish(f"{BASE}/status", "online", qos=1, retain=True)
+        c.subscribe(f"{BASE}/pump/+/cmd", qos=1)                      # + = any pump number
+
+    def on_message(c, userdata, msg):
+        pump_command(plant, msg)
+
+    client.on_connect = on_connect
+    client.on_message = on_message
+    client.connect_async(BROKER, 1883, keepalive=10)
+    client.loop_start()
+    return client
 
 
 def pump_command(plant: ModbusPlant, msg: mqtt.MQTTMessage) -> None:
@@ -95,14 +117,7 @@ def main() -> None:
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
 
     plant = ModbusPlant(PLANT_HOST, PLANT_PORT, STATION)
-
-    def on_connect(c: mqtt.Client) -> None:
-        c.publish(f"{BASE}/status", "online", qos=1, retain=True)
-        for n in (1, 2):
-            c.subscribe(f"{BASE}/pump/{n}/cmd", qos=1)
-
-    client = make_client("gateway", will=(f"{BASE}/status", "offline"), on_connect=on_connect)
-    client.message_callback_add(f"{BASE}/pump/+/cmd", lambda c, userdata, msg: pump_command(plant, msg))
+    client = connect_mqtt(plant)
 
     q: queue.Queue = queue.Queue()
     threads = [

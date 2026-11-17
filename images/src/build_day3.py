@@ -16,8 +16,8 @@ def save(sc, name):
     print('wrote', name)
 
 
-# ---------- Figure 15.1: where alert emails go, today and in production ----------
-def fig_15_1():
+# ---------- Figure 14.1: where alert emails go, today and in production ----------
+def fig_14_1():
     sc = Scene()
     plate(sc, 0, GW); plate(sc, 1, GREY); plate(sc, 2, IT)
     x0, y0 = origin(0)
@@ -36,7 +36,7 @@ def fig_15_1():
             GW)
     caption(sc, 1, ["Organisation's mail server", 'production only'], GREY)
     caption(sc, 2, ["Operator's inbox", 'production only: PC or phone'], IT)
-    save(sc, 'day3-fig-15-1-mail-path.svg')
+    save(sc, 'day3-fig-14-1-mail-path.svg')
 
 
 # ---------- Op SENTINEL: three outposts served by the ESP32 plant, every station polls ----------
@@ -81,5 +81,5 @@ def fig_sentinel():
 
 
 if __name__ == '__main__':
-    fig_15_1()
+    fig_14_1()
     fig_sentinel()

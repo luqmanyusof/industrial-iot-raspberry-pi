@@ -1,35 +1,35 @@
 # Day 3 — Building a Smart Project
 
 > **This morning your gateway becomes an edge node you could leave on a remote site:** it loses nothing when the network fails, emails a person when something needs one, and tells you when it has been restarted. **This afternoon** you put it all to work in **[Op SENTINEL](sentinel.md)**.
-> **Carry-over:** from Day 2 you need the `gateway` service reading the plant, Mosquitto with logins and the ACL (Topic 11), and the Node-RED dashboard.
+> **Carry-over:** from Day 2 you need the `gateway` service reading the plant and publishing over MQTT (Topic 10), and the Node-RED dashboard (Topic 11).
 
 ## Before you start
 
 - [ ] `systemctl status gateway mosquitto nodered` shows all three `active (running)`
-- [ ] `mosquitto_sub -h localhost -t 'ps01/#' -v -u dashboard -P '<dashboard password>'` shows telemetry every 2 seconds
+- [ ] `mosquitto_sub -h localhost -t 'ps01/#' -v` shows telemetry every 2 seconds
 - [ ] Your copy of the course files is up to date: `cd ~/course && git pull`
 
 ---
 
-## Topic 13 — Plan and design (concept)
+## Topic 12 — Plan and design (concept)
 
 **Goal:** design before you build: list what the edge node must do, draw how it does it, and decide in advance what happens when each part fails.
 
-### 13.1 — What the edge node must do
+### 12.1 — What the edge node must do
 
 | It must… | Built on |
 |---|---|
 | Poll the plant every 2 seconds and run the level alarm | Day 2, Topic 9 |
-| Keep every reading, even while the broker is down, and send it later, in order | **Topic 14** |
-| Email a person when something needs one, without email ever slowing the polling | **Topic 15** |
-| Report when it was restarted, and whether the last stop was clean | Topics 14 and 15 |
-| Run for months unattended: survive a frozen Pi, a full disk, a wrong clock | **Topic 16** |
+| Keep every reading, even while the broker is down, and send it later, in order | **Topic 13** |
+| Email a person when something needs one, without email ever slowing the polling | **Topic 14** |
+| Report when it was restarted, and whether the last stop was clean | Topics 13 and 14 |
+| Run for months unattended: survive a frozen Pi, a full disk, a wrong clock | **Topic 15** |
 
 The last row matters as much as the others. A gateway is usually installed somewhere nobody visits: if it needs a person to restart it, it has failed.
 
-### 13.2 — The architecture
+### 12.2 — The architecture
 
-**Figure 13.1 — The Day 3 edge node**
+**Figure 12.1 — The Day 3 edge node**
 
 ```mermaid
 flowchart LR
@@ -59,7 +59,7 @@ Two kinds of message leave the gateway, and they travel differently:
 | **History** | Every reading, every event | Through the **outbox**, never lost, sent in order | A missing reading is a hole in the record |
 | **State** | Alarm `HIGH`, gateway `online` | Straight to the broker, **retained**, latest value only | After an outage only the current state matters; replaying old alarm states would mislead |
 
-### 13.3 — Failure modes
+### 12.3 — Failure modes
 
 **Try it**
 
@@ -96,13 +96,13 @@ Before reading on, copy this table onto paper and fill in the last three columns
 
 ---
 
-## Topic 14 — Store-and-forward
+## Topic 13 — Store-and-forward
 
 **Goal:** make sure no reading is ever lost between the gateway and the broker, whatever happens to the link.
 
 **Open:** VS Code on your Pi, folder `~/iiot`, and the Node-RED dashboard in a browser.
 
-### 14.1 — The gap
+### 13.1 — The gap
 
 Your Day 2 gateway stores every reading in SQLite, but only *publishes* it if the broker is connected at that moment. Readings taken during an outage stay on the Pi forever.
 
@@ -112,11 +112,11 @@ Your Day 2 gateway stores every reading in SQLite, but only *publishes* it if th
    ```
 2. The chart has a hole where those readings should be. The gateway's journal says `Stored locally, broker not connected`, and that is the last anyone hears of them.
 
-### 14.2 — The outbox pattern
+### 13.2 — The outbox pattern
 
 The fix used by almost every reliable system: put each message in an **outbox** table first, and send from the outbox.
 
-**Figure 14.1 — An outage, with an outbox**
+**Figure 13.1 — An outage, with an outbox**
 
 ```mermaid
 sequenceDiagram
@@ -146,7 +146,7 @@ sequenceDiagram
 | Give every message an **ID** | QoS 1 means *at least once*: after an outage a message can arrive twice, and the ID lets receivers ignore the copy |
 | Delete sent rows after 24 hours | The SD card is not infinite |
 
-### 14.3 — The code
+### 13.3 — The code
 
 1. Copy today's files. `outbox.py` and `alerts.py` are new; `gateway.py` replaces your Day 2 one.
    ```bash
@@ -160,6 +160,7 @@ sequenceDiagram
 """Store-and-forward: every message waits in an SQLite outbox until the broker has confirmed it."""
 import json
 import logging
+import socket
 import sqlite3
 import threading
 import time
@@ -168,9 +169,9 @@ from pathlib import Path
 
 import paho.mqtt.client as mqtt
 
-from mqtt_link import GATEWAY
-
 log = logging.getLogger("outbox")
+
+GATEWAY = socket.gethostname()
 
 BATCH = 20                 # messages read from the outbox at a time
 RATE_PER_S = 20            # catch up after an outage, but do not flood the broker
@@ -260,7 +261,8 @@ def store_loop(q: queue.Queue, stop: threading.Event) -> None:
     outbox.create_table(db)
     db.execute(
         "CREATE TABLE IF NOT EXISTS plant_readings (ts TEXT, station TEXT, gateway TEXT, "
-        "tank_level_pct REAL, room_temp_c REAL, room_humidity_pct REAL, e_stop INTEGER, status TEXT)"
+        "tank_level_pct REAL, room_temp_c REAL, room_humidity_pct REAL, e_stop INTEGER, "
+        "pump1_on INTEGER, pump2_on INTEGER, status TEXT)"
     )
     while not stop.is_set() or not q.empty():
         try:
@@ -270,12 +272,12 @@ def store_loop(q: queue.Queue, stop: threading.Event) -> None:
         with db:                                            # one transaction: both rows, or neither
             if kind == "telemetry":
                 db.execute("INSERT INTO plant_readings VALUES (:ts, :station, :gateway, :tank_level_pct, "
-                           ":room_temp_c, :room_humidity_pct, :e_stop, :status)", item)
+                           ":room_temp_c, :room_humidity_pct, :e_stop, :pump1_on, :pump2_on, :status)", item)
             outbox.add(db, f"{BASE}/{kind}", item, qos=1)
     db.close()
 ```
 
-2. The gateway now also publishes events (start-ups, alerts) on `ps01/<gateway>/events`. Your Day 2 ACL already allows it; check with `sudo grep events /etc/mosquitto/acl`.
+2. The gateway now also publishes events (start-ups, alerts) on `ps01/<gateway>/events`.
 3. Set `PLANT_HOST, PLANT_PORT` as on Day 2, and restart the gateway:
    ```bash
    sudo systemctl restart gateway
@@ -283,7 +285,7 @@ def store_loop(q: queue.Queue, stop: threading.Event) -> None:
    ```
    The first line says `Edge node started … previous stop: clean`.
 
-> **Error in the journal: `Mail server not accepting`?** That is the mailer from Topic 15 trying to send an alert before Postfix is installed. It retries every 30 seconds and never blocks the polling. It stops once you finish Topic 15.
+> **Error in the journal: `Mail server not accepting`?** That is the mailer from Topic 14 trying to send an alert before Postfix is installed. It retries every 30 seconds and never blocks the polling. It stops once you finish Topic 14.
 
 **Try it**
 1. **The outage, again.** Count the waiting messages, stop the broker for two minutes, then count again:
@@ -301,17 +303,17 @@ def store_loop(q: queue.Queue, stop: threading.Event) -> None:
 
 ---
 
-## Topic 15 — Email alerts
+## Topic 14 — Email alerts
 
 **Goal:** tell a person, by email, when something needs a person, and only then.
 
-### 15.1 — A mail server on the Pi
+### 14.1 — A mail server on the Pi
 
 Programs rarely talk to a remote mail server themselves. They hand mail to a **local mail server** (an **MTA**, Mail Transfer Agent), which queues it, retries, and delivers it. That is store-and-forward again, for email. Your Pi runs **Postfix**, set to *local only*: it accepts mail from programs on this Pi and delivers it to mailboxes on this Pi, and nothing else.
 
-**Figure 15.1 — Where an alert goes, today and in production**
+**Figure 14.1 — Where an alert goes, today and in production**
 
-![Today, gateway.py hands the email to Postfix on the Pi and it is delivered to /var/mail/student01; in production, Postfix forwards it through the organisation's mail server to the operator's inbox](images/day3-fig-15-1-mail-path.svg)
+![Today, gateway.py hands the email to Postfix on the Pi and it is delivered to /var/mail/student01; in production, Postfix forwards it through the organisation's mail server to the operator's inbox](images/day3-fig-14-1-mail-path.svg)
 
 1. Tell the installer the answers in advance, then install Postfix and the `mail` command:
    ```bash
@@ -338,7 +340,7 @@ Programs rarely talk to a remote mail server themselves. They hand mail to a **l
 
 > **Later, in production:** one setting turns this into a real alert path. `sudo postconf -e 'relayhost = [mail.your-organisation.gov.my]:587'` (plus a login, if the server needs one) sends everything through the organisation's mail server, once `default_transport` and `relay_transport` are set back to `smtp`. The gateway's code does not change.
 
-### 15.2 — Rules that do not cry wolf
+### 14.2 — Rules that do not cry wolf
 
 An alert that fires too often is soon ignored, and then the real one is ignored too. Each rule must stay true for a while before it raises an alert, and a person gets one email when it starts and one when it ends.
 
@@ -350,7 +352,7 @@ An alert that fires too often is soon ignored, and then the real one is ignored 
 | Temperature sensor fault | Readings are `SENSOR_FAULT` | 5 min | The DHT11 misses the odd reading |
 | Gateway restarted after an unclean stop | At start-up, the last run did not stop cleanly | — | A crash or power cut deserves a look, even if it recovered |
 
-**Figure 15.2 — The life of one alert**
+**Figure 14.2 — The life of one alert**
 
 ```mermaid
 flowchart LR
@@ -367,7 +369,7 @@ flowchart LR
 
 One more rule: if the same alert is raised again within 10 minutes of its last email, it is recorded as an event but not emailed again, and neither is its clearing. A level hovering at the limit sends one email, not twenty.
 
-### 15.3 — The code
+### 14.3 — The code
 
 ```python
 #!/usr/bin/env python3
@@ -376,15 +378,16 @@ import getpass
 import logging
 import queue
 import smtplib
+import socket
 import threading
 import time
 from dataclasses import dataclass
 from email.message import EmailMessage
 from typing import Callable
 
-from mqtt_link import GATEWAY
-
 log = logging.getLogger("alerts")
+
+GATEWAY = socket.gethostname()
 
 MAIL_TO = getpass.getuser()                 # the user running the gateway, e.g. student01 -> /var/mail/student01
 MAIL_FROM = f"ps01-{GATEWAY}@localhost"
@@ -402,7 +405,7 @@ class Rule:
 
 RULES = [
     Rule("HIGH_LEVEL", "High tank level", lambda r, a: a == "HIGH", 0,
-         lambda r: f"Tank level {r.tank_level_pct:.1f} %. Red light and horn are on."),
+         lambda r: f"Tank level {r.tank_level_pct:.1f} %. The horn is on."),
     Rule("E_STOP", "Emergency stop active", lambda r, a: r.e_stop is True, 0,
          lambda r: "The plant's E-STOP is pressed: valve forced shut."),
     Rule("PLANT_LOST", "Plant not answering", lambda r, a: r.status == "COMMS_FAULT", 60,
@@ -516,22 +519,22 @@ class AlertManager:
 
 **Try it**
 1. **High level.** Ask for the plant's knob to go past 90 %. Within seconds: `mail` shows *RAISED: High tank level*. Bring it down below 85: *CLEARED*.
-2. **No crying wolf.** Push it past 90 % again within 10 minutes. The light and horn react, the event appears on MQTT, but no new email.
+2. **No crying wolf.** Push it past 90 % again within 10 minutes. The OLED and horn react, the event appears on MQTT, but no new email.
 3. **Patience.** Ask the trainer to unplug the plant for 30 seconds: no email. Then for 90 seconds: *RAISED: Plant not answering*, then *CLEARED* when it returns.
 4. **E-stop.** Press the plant's E-STOP: an email at once.
 5. **A crash.** `sudo systemctl kill -s SIGKILL gateway`. systemd restarts it, and you get *Gateway restarted after an unclean stop*. A clean `sudo systemctl restart gateway` sends nothing.
 6. **Mail server down.** `sudo systemctl stop postfix`, then trigger an alert. The journal shows `Mail server not accepting … retrying in 30 s`, and polling carries on. Start Postfix: the email arrives.
-7. **Watch the events.** `mosquitto_sub -h localhost -t 'ps01/+/events' -v -u dashboard -P '<password>'` shows every alert change, emailed or not.
+7. **Watch the events.** `mosquitto_sub -h localhost -t 'ps01/+/events' -v` shows every alert change, emailed or not.
 
 **Checkpoint ✅** A high level, a lost plant, an e-stop and a crash each produce one email when they start (and one when they end), and nothing you do to the mail server affects the polling.
 
 ---
 
-## Topic 16 — Production-ready and troubleshooting
+## Topic 15 — Production-ready and troubleshooting
 
 **Goal:** make the node survive months alone, then practise finding faults the way you will have to on site.
 
-### 16.1 — Ready to leave alone
+### 15.1 — Ready to leave alone
 
 1. **A hardware watchdog.** The Pi has a timer that reboots the board unless it is reset regularly. Let systemd reset it: if the whole system freezes, the resets stop and the Pi reboots itself within 15 seconds.
    ```bash
@@ -556,18 +559,18 @@ class AlertManager:
 
 | Habit | Why |
 |---|---|
-| Settings in files (`mqtt.json`), code in Git | Change a password or address without editing code; update code without losing settings |
+| Settings in one place (the constants at the top of `gateway.py`), code in Git | Change an address without hunting through the code; update code without losing settings |
 | Back up `~/iiot` and `/etc/mosquitto` | An SD card can die; rebuilding from notes takes a day, restoring takes minutes |
 | `sudo apt full-upgrade` on a schedule, not on site visits | Security fixes, without surprises during an incident |
 | Test the failure, not just the success | Everything in this course that "works" was proven by breaking it first |
 
 > **Later, in production:** give gateways a time source on the plant side (an NTP server or a GPS clock), and record with each reading whether the clock was synchronised. A wrong timestamp is worse than a missing one, because nobody questions it.
 
-### 16.2 — Troubleshooting drill
+### 15.2 — Troubleshooting drill
 
 The trainer will secretly break one thing on your station. You have 10 minutes to find it, fix it, and write down **symptom → cause → fix**. Work from the outside in.
 
-**Figure 16.1 — Where to look**
+**Figure 15.1 — Where to look**
 
 ```mermaid
 flowchart TD
@@ -575,8 +578,8 @@ flowchart TD
     d -- "no" --> g{"systemctl status gateway"}
     g -- "not running" --> j["journalctl -u gateway -n 50"]
     g -- "running" --> m{"mosquitto_sub shows<br/>telemetry?"}
-    m -- "no" --> mb["systemctl status mosquitto<br/>journalctl -u mosquitto<br/>check mqtt.json, passwd, acl"]
-    m -- "yes" --> nr["Node-RED: are the MQTT nodes<br/>connected? check its login"]
+    m -- "no" --> mb["systemctl status mosquitto<br/>journalctl -u mosquitto<br/>check BROKER in gateway.py"]
+    m -- "yes" --> nr["Node-RED: are the MQTT nodes<br/>connected? check the PS-01 broker node"]
     d -- "yes, but wrong" --> p{"Plant status<br/>COMMS_FAULT?"}
     p -- "yes" --> pl["ping 192.168.4.1<br/>nmcli device status<br/>python modbus_read.py"]
     p -- "no" --> o["Check alerts, mail, clock,<br/>disk: mail, timedatectl, df -h"]
@@ -594,11 +597,11 @@ flowchart TD
 | `mailq` | Is mail stuck in Postfix's queue? |
 | `df -h`, `timedatectl` | Is the disk full? Is the clock right? |
 
-### 16.3 — Where to go next
+### 15.3 — Where to go next
 
 | Topic | What it adds |
 |---|---|
-| **TLS** and mutual TLS for MQTT | Encryption and device identity, once brokers serve other machines (Day 2, Topic 11) |
+| **Broker logins, access lists, TLS** and mutual TLS for MQTT | Who may publish what, encryption and device identity, once brokers serve other machines |
 | **OPC UA** | The other major industrial protocol: richer data models and built-in security |
 | Fleet management (Ansible, Mender) | Configure and update fifty gateways the same way, with signed updates |
 | A historian (InfluxDB, TimescaleDB) | Long-term history, plotted by the reading's own time |

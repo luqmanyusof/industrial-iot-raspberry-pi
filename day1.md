@@ -5,7 +5,7 @@
 ## Before you start
 
 - [ ] Raspberry Pi 4 Model B, power supply and microSD card on your desk
-- [ ] Single-channel relay module and 6 female-to-female jumper wires (for Topic 6)
+- [ ] Single-channel relay module and 4 female-to-female jumper wires (for Topic 6)
 - [ ] A Windows 10 or 11 laptop (these notes assume Windows; see the *Not on Windows?* boxes otherwise)
 - [ ] Raspberry Pi Imager 2.0 or later installed on your laptop
 - [ ] VS Code installed, with the **Remote - SSH** extension
@@ -42,7 +42,7 @@ A Raspberry Pi is a **single-board computer (SBC)**: a full computer on one boar
 
 **Figure 1.1 — The system you build this week**
 
-![The system you build this week: the ESP32 field device in the plant, the Raspberry Pi gateway with the door-switch jumper and pump relay on its GPIO, and operators and servers](images/day1-fig-1-1-system.svg)
+![The system you build this week: the ESP32 field device with two pumps in the plant, the Raspberry Pi gateway with a door-switch jumper and a relay on its GPIO for practice, and operators and servers](images/day1-fig-1-1-system.svg)
 
 ### 1.3 — IoT architecture: device → edge → server
 
@@ -289,7 +289,7 @@ flowchart LR
     home --> iiot["~/iiot<br/>course folder"]
     home --> keys["~/.ssh/authorized_keys<br/>your public key (Topic 4)"]
     iiot --> venv[".venv/<br/>Python and packages (Topic 3)"]
-    iiot --> code["your programs<br/>sim_sensor.py, gateway.py,<br/>pump_control.py ..."]
+    iiot --> code["your programs<br/>sim_sensor.py, gateway.py,<br/>switch_relay.py ..."]
     iiot --> data["data/<br/>ps01.jsonl, ps01.db"]
     etc --> sysd["/etc/systemd/system/<br/>sim-sensor.service,<br/>gateway.service"]
     etc --> sshcfg["/etc/ssh/sshd_config.d/<br/>10-hardening.conf (Topic 4)"]
@@ -1149,9 +1149,9 @@ sequenceDiagram
 
 ---
 
-## Topic 6 — GPIO: door switch, pump relay and interlock
+## Topic 6 — GPIO: a switch in, a relay out
 
-**Goal:** read a digital input and switch a relay from Python, then combine them into an interlock that keeps the pump safe whatever happens to your program.
+**Goal:** read a digital input and switch a relay from Python, then let the input drive the output. These are the basics behind every sensor and actuator wired to a Pi.
 
 **Open:** VS Code on your Pi, and your relay module and jumper wires.
 
@@ -1162,16 +1162,14 @@ sequenceDiagram
 
 | Signal | GPIO | Physical pin | Connect to |
 |---|---|---|---|
-| Door switch | GPIO17 | 11 | GND, pin 9 |
-| START | GPIO22 | 15 | GND, pin 14 (touch briefly) |
-| STOP | GPIO23 | 16 | GND, pin 20 (touch briefly) |
-| Relay IN | GPIO27 | 13 | Relay module **IN** |
+| Door switch (input) | GPIO17 | 11 | GND, pin 9 |
+| Relay IN (output) | GPIO27 | 13 | Relay module **IN** |
 | Relay VCC | 5 V | 2 | Relay module **VCC** |
 | Relay GND | GND | 6 | Relay module **GND** |
 
 **Figure 6.1 — Wiring for the whole topic**
 
-![Wiring: door switch on pins 11 and 9, START on pin 15, STOP on pin 16, relay IN on pin 13, VCC on pin 2, GND on pin 6](images/day1-gpio-wiring.svg)
+![Wiring: door switch jumper on pins 11 and 9, relay IN on pin 13, VCC on pin 2, GND on pin 6](images/day1-gpio-wiring.svg)
 
 > **Three rules for the header:**
 > 1. **Inputs go to GND only. Never connect a GPIO pin to 5 V** (pins 2 and 4). GPIO pins work at 3.3 V and are damaged by 5 V.
@@ -1194,7 +1192,7 @@ flowchart LR
 ```mermaid
 flowchart LR
     j1["Jumper in place"] --> l1["pin pulled<br/>to 0 V (low)"] --> p1["is_pressed<br/>= True"] --> c1["Door CLOSED"]
-    j2["Jumper out,<br/>or a broken wire"] --> l2["pull-up holds<br/>pin at 3.3 V (high)"] --> p2["is_pressed<br/>= False"] --> c2["Door OPEN:<br/>pump must stop"]
+    j2["Jumper out,<br/>or a broken wire"] --> l2["pull-up holds<br/>pin at 3.3 V (high)"] --> p2["is_pressed<br/>= False"] --> c2["Door OPEN"]
     classDef good fill:#e6f4ea,stroke:#188038,color:#000
     classDef bad fill:#fce8e6,stroke:#c5221f,color:#000
     class c1 good
@@ -1228,9 +1226,9 @@ pause()
 | `when_pressed` / `when_released` | Functions that run on a change, so you do not check the pin in a loop |
 | `pause()` | Keep the program alive, waiting for events |
 
-> **The door switch is fail-safe already.** Jumper in place means closed. A broken wire or a pulled connector reads exactly like an open door, so the plant stops instead of carrying on blind. Real safety circuits are wired the same way.
+> **The door switch is fail-safe already.** Jumper in place means closed. A broken wire or a pulled connector reads exactly like an open door, so a fault never looks like "all clear". Real safety circuits are wired the same way.
 
-### 6.3 — Digital output: the pump relay
+### 6.3 — Digital output: the relay
 
 A relay is a switch worked by an electromagnet. The Pi's 3.3 V pin cannot drive the electromagnet directly; the relay **module** has the extra electronics to do it.
 
@@ -1243,22 +1241,22 @@ A relay is a switch worked by an electromagnet. The Pi's 3.3 V pin cannot drive 
 
 ```python
 #!/usr/bin/env python3
-"""Click the pump relay on GPIO27 (pin 13) three times."""
+"""Click the relay on GPIO27 (pin 13) three times."""
 from time import sleep
 
 from gpiozero import OutputDevice
 
 RELAY_ACTIVE_HIGH = True  # set to False if the relay is ON while this says OFF
 
-pump = OutputDevice(27, active_high=RELAY_ACTIVE_HIGH, initial_value=False)
+relay = OutputDevice(27, active_high=RELAY_ACTIVE_HIGH, initial_value=False)
 print("Relay should be OFF now. Starting in 3 seconds...")
 sleep(3)
 
 for _ in range(3):
-    pump.on()
+    relay.on()
     print("ON")
     sleep(1)
-    pump.off()
+    relay.off()
     print("OFF")
     sleep(1)
 ```
@@ -1269,133 +1267,82 @@ for _ in range(3):
 
 > **Relay never switches off, even with the setting right?** Some 5 V active-low modules do not see the Pi's 3.3 V as "high". This is a hardware mismatch, not your code. Tell the trainer.
 
-> **Why `initial_value=False`?** The moment your program starts, the pump must be off, whatever state the pin was left in. Starting a machine should always be a deliberate act.
+> **Why `initial_value=False`?** The moment your program starts, the output must be off, whatever state the pin was left in. Switching something on should always be a deliberate act.
 
-### 6.4 — The interlock
+### 6.4 — Input drives output
 
-Now put it together. The pump may only run when someone presses START **and** the door is closed. STOP or an opening door switches it off at once. STOP always wins.
+Put the two together: the relay follows the door switch.
 
-**Figure 6.5 — The interlock: how the pump gets to ON, and every way back to OFF**
+**Figure 6.5 — One input, one output**
 
 ```mermaid
-flowchart TB
-    st(["Program starts<br/>initial_value=False"]) --> OFF(["Pump OFF"])
-    OFF -- "START, with the door closed<br/>and STOP not held" --> ON(["Pump ON"])
-    ON -- "STOP, door opened,<br/>or the program stops" --> OFF2(["Pump OFF"])
-    OFF2 -. "a person must<br/>press START again" .-> OFF
-    OFF -. "START with the door open<br/>or STOP held" .-> ref["Refused:<br/>stays OFF"]
-    OFF2 -. "door closes" .-> stay["No auto restart:<br/>stays OFF"]
+flowchart LR
+    j["Door switch<br/>GPIO17"] -- "closed" --> on(["relay.on()"])
+    j -- "open" --> off(["relay.off()"])
+    stop["Ctrl+C"] --> fin["finally:<br/>relay.off()"]
     classDef on fill:#e6f4ea,stroke:#188038,color:#000
     classDef off fill:#fce8e6,stroke:#c5221f,color:#000
-    class ON on
-    class OFF,OFF2 off
+    class on on
+    class off,fin off
 ```
 
-1. Shut down and add two jumpers for the buttons: one on **pin 15** (START) and one on **pin 16** (STOP), with their other ends free. Touch a free end briefly onto a GND pin (14 for START, 20 for STOP) to "press" it. Power up.
-2. Create `~/iiot/pump_control.py` (or copy `code/day1/pump_control.py`). Use the `RELAY_ACTIVE_HIGH` value you found in 6.3:
+1. Create `~/iiot/switch_relay.py` (or copy `code/day1/switch_relay.py`). Use the `RELAY_ACTIVE_HIGH` value you found in 6.3:
 
 ```python
 #!/usr/bin/env python3
-"""PS-01 pump control: START/STOP with a door interlock, fail-safe by design.
+"""Input drives output: the relay on GPIO27 (pin 13) follows the door switch on GPIO17 (pin 11).
 
-Wiring (jumpers go to GND only):
-  door switch  GPIO17 (pin 11)  -> GND (pin 9)   jumper in place = door closed
-  START        GPIO22 (pin 15)  -> GND (pin 14)  touch briefly
-  STOP         GPIO23 (pin 16)  -> GND (pin 20)  touch briefly
-  relay IN     GPIO27 (pin 13); relay VCC -> 5V (pin 2); relay GND -> GND (pin 6)
+Jumper in place (door closed) = relay ON. Jumper pulled (door open) = relay OFF.
 """
-import logging
-import signal
-import sys
 from signal import pause
 
 from gpiozero import Button, OutputDevice
 
-RELAY_ACTIVE_HIGH = True  # set to False if your relay switches ON when the program starts
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-log = logging.getLogger("pump_control")
+RELAY_ACTIVE_HIGH = True  # use the value you found with relay_test.py
 
 door = Button(17, pull_up=True, bounce_time=0.05)
-start_button = Button(22, pull_up=True, bounce_time=0.05)
-stop_button = Button(23, pull_up=True, bounce_time=0.05)
-pump = OutputDevice(27, active_high=RELAY_ACTIVE_HIGH, initial_value=False)
+relay = OutputDevice(27, active_high=RELAY_ACTIVE_HIGH, initial_value=False)
 
 
-def start() -> None:
-    if not door.is_pressed:
-        log.warning("START refused: door is open")
-        return
-    if stop_button.is_pressed:
-        log.warning("START refused: STOP is held")
-        return
-    if not pump.is_active:
-        pump.on()
-        log.info("Pump ON")
-
-
-def stop(reason: str) -> None:
-    if pump.is_active:
-        pump.off()
-        log.info("Pump OFF (%s)", reason)
+def door_closed() -> None:
+    relay.on()
+    print("Door CLOSED -> relay ON")
 
 
 def door_opened() -> None:
-    log.warning("Door OPEN")
-    stop("door opened")
+    relay.off()
+    print("Door OPEN   -> relay OFF")
 
 
-start_button.when_pressed = start
-stop_button.when_pressed = lambda: stop("STOP pressed")
+door.when_pressed = door_closed
 door.when_released = door_opened
-door.when_pressed = lambda: log.info("Door closed")
+if door.is_pressed:
+    door_closed()
 
-signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-
-log.info("Pump control ready. Door is %s, pump is OFF", "closed" if door.is_pressed else "OPEN")
+print("The relay follows the door switch - Ctrl+C to stop")
 try:
     pause()
 finally:
-    pump.off()
-    log.info("Pump control stopped, pump OFF")
+    relay.off()
+    print("Stopped, relay OFF")
 ```
 
-3. Run `python pump_control.py` and work through this test sheet. Tick each line only when the relay does what the log says.
+2. Run `python switch_relay.py`. Pull the jumper off pin 9 and put it back: the relay clicks off and on, and the log follows.
+3. With the jumper in place (relay ON), press **Ctrl+C**: the `finally` block switches the relay off.
 
-| # | Do this | Expected |
-|---|---|---|
-| 1 | Door closed, touch START | Pump ON, relay clicks |
-| 2 | Touch STOP | Pump OFF |
-| 3 | Open the door (pull the pin 9 end), touch START | `START refused: door is open`, relay stays off |
-| 4 | Close the door, touch START, then open the door | Pump OFF (door opened) |
-| 5 | Close the door. Hold STOP on GND and touch START with the other jumper | `START refused: STOP is held` |
-| 6 | Close the door. Pump ON, then press **Ctrl+C** | `Pump control stopped, pump OFF` |
-
-> **Closing the door does not restart the pump.** After a stop, a person must press START again. A machine that restarts by itself when a guard closes can injure the person who just closed it.
+| Piece | What it does |
+|---|---|
+| `when_pressed` / `when_released` | The input calls your functions; nothing polls the pin |
+| `if door.is_pressed: door_closed()` | Events fire on a *change*. This line handles the state the switch is already in at start-up |
+| `try: … finally: relay.off()` | However the program ends normally, the output ends OFF |
 
 **Try it**
-1. **Kill it the hard way.** Start the pump, then from a second terminal: `pkill -9 -f pump_control.py`. `-9` gives the program no chance to run its `finally` block. **Watch the relay** and write down what it did. Whatever happened was decided by the relay module's hardware, not by your code.
-2. **Power cut.** Start the pump, then pull the Pi's power. The relay must drop out, because the module loses its supply.
-3. **Put everything back:** power up, run `pump_control.py` again, and confirm the pump starts OFF.
+1. **One line instead of two functions.** gpiozero can wire an input to an output for you. Replace everything between creating `relay` and `print(...)` with `relay.source = door`. Run it: same behaviour, no prints.
+2. **Kill it the hard way.** With the relay ON, from a second terminal: `pkill -9 -f switch_relay.py`. `-9` gives the program no chance to run `finally`. **Watch the relay** and write down what it did: that was decided by the hardware, not by your code.
 
-**Figure 6.6 — Who decides the relay state when things go wrong**
+> **Later, in production:** never rely on software alone to switch something off safely. Real plants wire safety in hardware (a door switch in series with the contactor coil), so a crash or a frozen Pi always ends with the machine off.
 
-```mermaid
-flowchart LR
-    e1["Ctrl+C or<br/>SIGTERM"] --> s1["finally: pump.off()<br/>your code decides"] --> r1["Pump OFF"]
-    e2["kill -9"] --> s2["no clean-up runs,<br/>the pin is released"] --> r2["GPIO chip and relay<br/>module decide:<br/>observe it"]
-    e3["Power cut"] --> s3["module loses its<br/>5 V supply"] --> r3["Relay drops out:<br/>pump OFF"]
-    classDef sw fill:#e6f4ea,stroke:#188038,color:#000
-    classDef unk fill:#fef7e0,stroke:#e37400,color:#000
-    classDef hw fill:#e8f0fe,stroke:#1967d2,color:#000
-    class s1,r1 sw
-    class s2,r2 unk
-    class s3,r3 hw
-```
-
-> **Later, in production:** never rely on software alone for safety. Real plants put a hardware interlock (the door switch wired in series with the contactor coil) and a watchdog in front of the program, so a crash or a frozen Pi always ends with the pump off.
-
-**Checkpoint ✅** All six lines of the test sheet pass, and you can say what your relay did when the program was killed with `-9`.
+**Checkpoint ✅** `relay_test.py` clicks three times with the right `RELAY_ACTIVE_HIGH`, the relay follows the door switch, and you can say what your relay did when the program was killed with `-9`.
 
 ---
 
@@ -1406,15 +1353,15 @@ flowchart LR
 - Password login off, and a firewall allowing only SSH and mDNS from the cable side, and port 8080 from the plant side
 - `~/iiot/.venv` with `requests`, `pymodbus` and `paho-mqtt`, and `requirements.txt`
 - `~/iiot/gateway.py` running as the `gateway` service: reading, storing to `data/ps01.db` and forwarding to your neighbour
-- `~/iiot/pump_control.py` passing the interlock test sheet, with the relay wired to pin 13
+- `~/iiot/switch_relay.py`: the relay on pin 13 following the door switch on pin 11
 
 **Security recap**
-- Your private key never leaves your laptop. Anyone with it, and its passphrase, can switch your pump.
+- Your private key never leaves your laptop. Anyone with it, and its passphrase, controls your Pi.
 - Every open port is a promise to keep it safe. You opened 8080 for a lab; on Day 2 you will close what you no longer need.
 - Your programs run as `student01`, not root. Only use `sudo` for system tasks.
 
 **Extra, if you finish early**
-1. **A normally-closed STOP.** Real STOP buttons are wired so a broken wire stops the machine. Leave the STOP jumper connected from pin 16 to pin 20 all the time, and treat *removing* it as pressing STOP: change `stop_button.when_pressed` to `when_released`, and the START check to refuse when the STOP jumper is *not* in place. Then cut the "wire" and see the pump stop.
-2. Run `pump_control.py` as a service called `pump-control`, then repeat the `-9` kill test. What does systemd do, and is a pump that comes back OFF after a restart safe?
+1. **Blink.** Write `blink.py` that switches the relay on and off every second until **Ctrl+C**, and always ends with the relay OFF. Then do it again in one line with gpiozero: `relay.blink(on_time=1, off_time=1)`.
+2. **Invert it.** Change `switch_relay.py` so the relay is ON while the door is *open*, like a "door open" warning lamp. Which two lines change?
 
-**Tomorrow (Day 2):** the gateway meets the plant. You read a real field device over Modbus, publish readings and pump commands over secure MQTT, and build an operator dashboard in Node-RED, where a remote command must still obey your local interlock.
+**Tomorrow (Day 2):** the gateway meets the plant. You read a real field device over Modbus, switch its two pumps, publish readings over MQTT, and build an operator dashboard in Node-RED.

@@ -4,7 +4,7 @@
     "type": "tab",
     "label": "PS-01 dashboard",
     "disabled": false,
-    "info": "Operator dashboard for Stesen Pam PS-01. Industrial IoT course, Day 2, Topic 12."
+    "info": "Operator dashboard for Stesen Pam PS-01. Industrial IoT course, Day 2, Topic 11."
   },
   {
     "id": "ps01-broker",
@@ -184,8 +184,8 @@
     "finalize": "",
     "libs": [],
     "x": 360,
-    "y": 80,
-    "func": "// Remember which gateway this broker belongs to (used by the pump buttons)\nflow.set('gateway', msg.topic.split('/')[1]);\n\nconst r = msg.payload;\nconst one = (v, unit) => (v === null || v === undefined) ? '—' : v.toFixed(1) + unit;\nconst pump = on => (on === null || on === undefined) ? '—' : (on ? 'RUNNING' : 'stopped');\nlet plant = r.status;\nif (r.e_stop) plant += ' · E-STOP ACTIVE';\n\nreturn [\n    r.tank_level_pct === null ? null : { payload: r.tank_level_pct },              // gauge\n    r.tank_level_pct === null ? null : { topic: 'tank level', payload: r.tank_level_pct },  // chart\n    { payload: one(r.room_temp_c, ' °C') },\n    { payload: one(r.room_humidity_pct, ' %') },\n    { payload: plant },\n    { payload: pump(r.pump1_on) },\n    { payload: pump(r.pump2_on) },\n];",
+    "y": 120,
+    "func": "const r = msg.payload;\nconst one = (v, unit) => (v === null || v === undefined) ? '—' : v.toFixed(1) + unit;\nconst pump = on => (on === null || on === undefined) ? '—' : (on ? 'RUNNING' : 'stopped');\nlet plant = r.status;\nif (r.e_stop) plant += ' · E-STOP ACTIVE';\n\nreturn [\n    r.tank_level_pct === null ? null : { payload: r.tank_level_pct },              // gauge\n    r.tank_level_pct === null ? null : { topic: 'tank level', payload: r.tank_level_pct },  // chart\n    { payload: one(r.room_temp_c, ' °C') },\n    { payload: one(r.room_humidity_pct, ' %') },\n    { payload: plant },\n    { payload: pump(r.pump1_on) },\n    { payload: pump(r.pump2_on) },\n];",
     "wires": [
       [
         "gauge-level"
@@ -209,7 +209,16 @@
         "txt-pump2"
       ]
     ],
-    "z": "ps01-tab"
+    "z": "ps01-tab",
+    "outputLabels": [
+      "gauge",
+      "chart",
+      "temperature",
+      "humidity",
+      "plant",
+      "pump 1",
+      "pump 2"
+    ]
   },
   {
     "id": "gauge-level",
@@ -524,7 +533,7 @@
     "color": "#717171",
     "className": "",
     "x": 630,
-    "y": 380,
+    "y": 300,
     "wires": [],
     "z": "ps01-tab"
   },
@@ -546,8 +555,6 @@
     "iconPosition": "left",
     "payload": "ON",
     "payloadType": "str",
-    "topic": "1",
-    "topicType": "str",
     "buttonColor": "#1a73e8",
     "textColor": "#ffffff",
     "iconColor": "#ffffff",
@@ -555,10 +562,12 @@
     "y": 420,
     "wires": [
       [
-        "fn-cmd"
+        "out-pump1"
       ]
     ],
-    "z": "ps01-tab"
+    "z": "ps01-tab",
+    "topic": "",
+    "topicType": "str"
   },
   {
     "id": "btn-p1-off",
@@ -578,8 +587,6 @@
     "iconPosition": "left",
     "payload": "OFF",
     "payloadType": "str",
-    "topic": "1",
-    "topicType": "str",
     "buttonColor": "#d93025",
     "textColor": "#ffffff",
     "iconColor": "#ffffff",
@@ -587,10 +594,12 @@
     "y": 460,
     "wires": [
       [
-        "fn-cmd"
+        "out-pump1"
       ]
     ],
-    "z": "ps01-tab"
+    "z": "ps01-tab",
+    "topic": "",
+    "topicType": "str"
   },
   {
     "id": "txt-pump2",
@@ -609,7 +618,7 @@
     "color": "#717171",
     "className": "",
     "x": 630,
-    "y": 540,
+    "y": 340,
     "wires": [],
     "z": "ps01-tab"
   },
@@ -631,8 +640,6 @@
     "iconPosition": "left",
     "payload": "ON",
     "payloadType": "str",
-    "topic": "2",
-    "topicType": "str",
     "buttonColor": "#1a73e8",
     "textColor": "#ffffff",
     "iconColor": "#ffffff",
@@ -640,10 +647,12 @@
     "y": 580,
     "wires": [
       [
-        "fn-cmd"
+        "out-pump2"
       ]
     ],
-    "z": "ps01-tab"
+    "z": "ps01-tab",
+    "topic": "",
+    "topicType": "str"
   },
   {
     "id": "btn-p2-off",
@@ -663,8 +672,6 @@
     "iconPosition": "left",
     "payload": "OFF",
     "payloadType": "str",
-    "topic": "2",
-    "topicType": "str",
     "buttonColor": "#d93025",
     "textColor": "#ffffff",
     "iconColor": "#ffffff",
@@ -672,48 +679,12 @@
     "y": 620,
     "wires": [
       [
-        "fn-cmd"
+        "out-pump2"
       ]
     ],
-    "z": "ps01-tab"
-  },
-  {
-    "id": "fn-cmd",
-    "type": "function",
-    "name": "command topic",
-    "outputs": 1,
-    "timeout": 0,
-    "noerr": 0,
-    "initialize": "",
-    "finalize": "",
-    "libs": [],
-    "x": 330,
-    "y": 500,
-    "func": "// msg.topic is the pump number (1 or 2), msg.payload is ON or OFF\nconst gw = flow.get('gateway');\nif (!gw) {\n    node.warn('No telemetry yet, so the gateway name is unknown');\n    return null;\n}\nmsg.topic = `ps01/${gw}/pump/${msg.topic}/cmd`;\nreturn msg;",
-    "wires": [
-      [
-        "out-cmd"
-      ]
-    ],
-    "z": "ps01-tab"
-  },
-  {
-    "id": "out-cmd",
-    "type": "mqtt out",
-    "name": "pump command",
+    "z": "ps01-tab",
     "topic": "",
-    "qos": "1",
-    "retain": "false",
-    "respTopic": "",
-    "contentType": "",
-    "userProps": "",
-    "correl": "",
-    "expiry": "",
-    "broker": "ps01-broker",
-    "x": 530,
-    "y": 500,
-    "wires": [],
-    "z": "ps01-tab"
+    "topicType": "str"
   },
   {
     "id": "notify",
@@ -734,6 +705,42 @@
     "name": "warning",
     "x": 660,
     "y": 480,
+    "wires": [],
+    "z": "ps01-tab"
+  },
+  {
+    "id": "out-pump1",
+    "type": "mqtt out",
+    "name": "pump 1 command",
+    "topic": "ps01/student01/pump/1/cmd",
+    "qos": "1",
+    "retain": "false",
+    "respTopic": "",
+    "contentType": "",
+    "userProps": "",
+    "correl": "",
+    "expiry": "",
+    "broker": "ps01-broker",
+    "x": 380,
+    "y": 440,
+    "wires": [],
+    "z": "ps01-tab"
+  },
+  {
+    "id": "out-pump2",
+    "type": "mqtt out",
+    "name": "pump 2 command",
+    "topic": "ps01/student01/pump/2/cmd",
+    "qos": "1",
+    "retain": "false",
+    "respTopic": "",
+    "contentType": "",
+    "userProps": "",
+    "correl": "",
+    "expiry": "",
+    "broker": "ps01-broker",
+    "x": 380,
+    "y": 560,
     "wires": [],
     "z": "ps01-tab"
   }
