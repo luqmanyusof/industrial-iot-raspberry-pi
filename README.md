@@ -75,7 +75,7 @@ industrial-iot-raspberry-pi/
 │   │   ├── relay_test.py        # relay output (Topic 6)
 │   │   └── switch_relay.py      # input drives output (Topic 6)
 │   ├── day2/
-│   │   ├── plant_sim.py         # simulated plant, same Modbus map (Topic 8)
+│   │   ├── plant_sim.py         # simulated plant, same Modbus map (optional: practise without the ESP32)
 │   │   ├── modbus_read.py       # read every register (Topic 8)
 │   │   ├── modbus_write.py      # write pumps, valve, horn (Topic 8)
 │   │   ├── plant.py             # ModbusPlant and LevelAlarm (Topic 9)

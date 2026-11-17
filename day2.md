@@ -152,26 +152,16 @@ Using only the register map, write down the function code, table and address you
 
 ## Topic 8 — Modbus by hand
 
-**Goal:** read and write the plant's registers from Python, first on a simulator of your own, then on the real plant, and see what happens when two clients disagree.
+**Goal:** read and write the plant's registers from Python, and see what happens when two clients disagree.
 
-**Open:** two VS Code terminals on your Pi, both with the venv active, in `~/iiot`.
+**Open:** a VS Code terminal on your Pi, with the venv active, in `~/iiot`.
 
-1. Copy today's first three programs:
+1. Copy today's first two programs:
    ```bash
-   cp ~/course/code/day2/{plant_sim,modbus_read,modbus_write}.py ~/iiot/
+   cp ~/course/code/day2/{modbus_read,modbus_write}.py ~/iiot/
    ```
 
-### 8.1 — A plant of your own: the simulator
-
-`plant_sim.py` is a complete Modbus TCP server with the same register map as the ESP32, written in plain Python. The tank level rises and falls on its own, and now and then the temperature sensor fails. Nobody else can disturb it, so it is the safe place to experiment.
-
-1. In terminal 1, start it and leave it running:
-   ```bash
-   python plant_sim.py
-   ```
-   It listens on port **5020**: ports below 1024, like 502, need root.
-
-### 8.2 — Read every register
+### 8.1 — Read every register
 
 `modbus_read.py` reads all four tables once and prints them raw and scaled:
 
@@ -233,14 +223,6 @@ if __name__ == "__main__":
 | `read_holding_registers` | FC 03: the answer is in `.registers` |
 | `resp.isError()` | The server can answer with an error instead of data, for example for an address that does not exist |
 
-1. In terminal 2, read the simulator:
-   ```bash
-   python modbus_read.py --host 127.0.0.1 --port 5020
-   ```
-2. Run it a few times. `tank_level` and `uptime` change; everything else stays put.
-
-### 8.3 — Read the real plant
-
 All three Pis now poll the same ESP32 at the same time. A Modbus TCP server keeps one connection per client and answers the requests one by one.
 
 **Figure 8.1 — Every Pi is a client of the one plant**
@@ -251,9 +233,9 @@ All three Pis now poll the same ESP32 at the same time. A Modbus TCP server keep
    ```bash
    python modbus_read.py
    ```
-2. Ask someone to turn the plant's knob, and read again. `tank_level` follows it.
+2. Ask someone to turn the plant's knob, and read again. `tank_level` follows it, and `uptime` has moved on; everything else stays put.
 
-### 8.4 — Write commands
+### 8.2 — Write commands
 
 `modbus_write.py` switches the two pumps, sets the valve and sounds the horn:
 
@@ -566,8 +548,7 @@ flowchart LR
 
 ### 9.3 — Run it
 
-1. **Simulator first.** With `plant_sim.py` still running in terminal 1, set `PLANT_HOST, PLANT_PORT = "127.0.0.1", 5020` in `gateway.py` and run `python gateway.py`. The simulated tank rises and falls on its own: within a few minutes you see `Alarm WARN` and `Alarm HIGH` in the log, and the simulator shows the alarm and horn your gateway wrote. Stop both with **Ctrl+C**.
-2. **The real plant.** Set `PLANT_HOST, PLANT_PORT = "192.168.4.1", 502` again, then start the service:
+1. Check that `gateway.py` says `PLANT_HOST, PLANT_PORT = "192.168.4.1", 502`, then start the service and follow its log:
    ```bash
    sudo systemctl start gateway
    journalctl -u gateway -f
